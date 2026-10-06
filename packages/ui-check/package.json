@@ -1,0 +1,40 @@
+{
+  "name": "@clement_chsn/pi-ui-check",
+  "version": "0.1.0",
+  "description": "On-demand Chromium browser for Pi agents: interactions, screenshots and UI diagnostics.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/ui-check"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/ui-check#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "typebox": "*"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  },
+  "devDependencies": {
+    "typebox": "catalog:"
+  }
+}

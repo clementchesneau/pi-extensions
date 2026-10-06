@@ -1,0 +1,42 @@
+{
+  "name": "@clement_chsn/pi-code-intelligence",
+  "version": "0.1.0",
+  "description": "On-demand TypeScript and JavaScript navigation for Pi through a local language server.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/code-intelligence"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/code-intelligence#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "typebox": "*"
+  },
+  "dependencies": {
+    "typescript": "catalog:",
+    "typescript-language-server": "6.0.0",
+    "vscode-jsonrpc": "8.2.1"
+  },
+  "devDependencies": {
+    "typebox": "catalog:"
+  }
+}

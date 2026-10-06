@@ -1,0 +1,42 @@
+{
+  "name": "@clement_chsn/pi-session-compaction",
+  "version": "0.1.0",
+  "description": "Voluntary Pi compaction from 60% context with temporary branch-local session memory.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/session-compaction"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/session-compaction#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "typebox": "catalog:"
+  }
+}

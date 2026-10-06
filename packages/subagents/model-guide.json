@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "provider": "openai-codex",
+      "id": "gpt-6-luna",
+      "preferFor": "Focused, repetitive, high-volume tasks.",
+      "avoidFor": "End-to-end work requiring deep reasoning.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "Described by OpenAI as the most cost-efficient GPT-6 variant; deeper reasoning increases token usage.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-6.1-sol",
+      "preferFor": "Complex coding, tool use, and professional work requiring a strong capability-to-cost balance.",
+      "avoidFor": "Simple, high-volume tasks where a lighter model is sufficient.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "Positioned as comparable to Astra at lower cost for complex tasks; compare them on your own tasks. The none and minimal effort levels are unsupported.",
+      "sources": ["https://developers.openai.com/api/docs/models/gpt-6.1-sol"],
+      "reviewedOn": "2026-09-29",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-6-sol",
+      "preferFor": "Complex development and agentic tool sequences.",
+      "avoidFor": "Short, repetitive tasks where a lighter variant is sufficient.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "Designed for coding and complex agentic workflows; increased effort can lengthen responses and use more tokens.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-6-sol",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-6-astra",
+      "preferFor": "Difficult reasoning, research, and end-to-end work.",
+      "avoidFor": "Simple, high-volume, or latency-sensitive processing.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "Positioned for the most difficult tasks; does not support none effort, and high effort can cost time and tokens.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-6-astra",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-5.6-terra",
+      "preferFor": "Work requiring a balance between reasoning depth and resource use.",
+      "avoidFor": "The most difficult tasks requiring the flagship variant.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "Positioned by OpenAI as a compromise between capability and cost; adjust effort to task difficulty.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-5.6-sol",
+      "preferFor": "Complex professional work requiring planning and judgment.",
+      "avoidFor": "Simple, high-volume extraction or classification.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "GPT-5.6 flagship variant; high effort favors difficult tasks at the cost of increased latency and token use.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-5.6-luna",
+      "preferFor": "Focused, high-volume, resource-sensitive processing.",
+      "avoidFor": "Difficult reasoning and long agentic tasks.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "Cost-oriented GPT-5.6 variant; increasing effort may reduce the latency advantage.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "openai-codex",
+      "id": "gpt-5.5",
+      "preferFor": "Complex coding and professional work across the GPT-5.5 family.",
+      "avoidFor": "Simple operations that do not require the flagship model.",
+      "effort": { "simple": "low", "standard": "medium", "complex": "high" },
+      "tradeoff": "GPT-5.5 flagship model; medium is its default effort, while high prioritizes reasoning over latency.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-5.5",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "anthropic",
+      "id": "claude-sonnet-5",
+      "preferFor": "Coding and general tasks requiring a balance of speed and reasoning.",
+      "avoidFor": "Tasks requiring adaptive thinking to be disabled or non-standard sampling parameters.",
+      "tradeoff": "Adaptive thinking is enabled by default; documentation indicates comparatively fast latency, varying by task and effort.",
+      "sources": ["https://platform.claude.com/docs/en/models/sonnet-5/overview"],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "anthropic",
+      "id": "claude-opus-5-5",
+      "preferFor": "Long-running agentic development and knowledge work.",
+      "avoidFor": "Short, latency-sensitive tasks or tasks requiring thinking to be disabled.",
+      "tradeoff": "Adaptive thinking is always active; documentation indicates moderately fast rather than fast comparative latency.",
+      "sources": ["https://platform.claude.com/docs/en/models/opus-5-5/overview"],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "google",
+      "id": "gemini-3.8-flash",
+      "preferFor": "Agentic workflows, coding, and multimodal input processing.",
+      "avoidFor": "Image or audio generation, which this model does not support.",
+      "tradeoff": "Flash model with low, medium, or high thinking in the Gemini API; the minimal level is unsupported.",
+      "sources": ["https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    },
+    {
+      "provider": "deepseek",
+      "id": "deepseek-flash",
+      "preferFor": "High-volume workflow trials with multimodal input through the DeepSeek API.",
+      "avoidFor": "Tasks requiring an effort setting documented in this selection.",
+      "tradeoff": "API identifier for V4.1-Flash; documentation describes it as focused on throughput and efficiency, without guaranteeing results on any particular task.",
+      "sources": ["https://api-docs.deepseek.com/news/news260910/"],
+      "reviewedOn": "2026-09-27",
+      "status": "verified"
+    }
+  ]
+}

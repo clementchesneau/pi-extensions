@@ -1,0 +1,45 @@
+{
+  "name": "@clement_chsn/pi-graphite-ui",
+  "version": "0.1.0",
+  "description": "Graphite theme, compact header, run timers and responsive footer for the Pi TUI.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/graphite-ui"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/graphite-ui#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ],
+    "themes": [
+      "./themes/graphite.json"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:"
+  }
+}

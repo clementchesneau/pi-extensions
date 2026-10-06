@@ -1,0 +1,44 @@
+{
+  "name": "@clement_chsn/pi-subagents",
+  "version": "0.1.0",
+  "description": "Asynchronous delegation from Pi to independent child Pi sessions.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/subagents"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/subagents#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:",
+    "typebox": "catalog:"
+  }
+}

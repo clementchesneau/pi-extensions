@@ -1,0 +1,40 @@
+{
+  "name": "@clement_chsn/pi-shared",
+  "version": "0.1.0",
+  "description": "Internal helpers for the @clement_chsn Pi extensions; no stability guarantee outside them.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/shared#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./activity-indicator": "./activity-indicator.js",
+    "./full-page": "./full-page.js",
+    "./process-tree": "./process-tree.js",
+    "./task-list": "./task-list.js",
+    "./terminal-text": "./terminal-text.js",
+    "./tool-result": "./tool-result.js"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-tui": "catalog:"
+  }
+}

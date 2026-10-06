@@ -1,0 +1,40 @@
+{
+  "name": "@clement_chsn/pi-activity-indicator",
+  "version": "0.1.0",
+  "description": "Shared Pi TUI activity bar: run timer and counters of active background work.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/activity-indicator"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/activity-indicator#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-tui": "*"
+  },
+  "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-tui": "catalog:"
+  }
+}

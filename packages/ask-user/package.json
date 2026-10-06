@@ -1,0 +1,39 @@
+{
+  "name": "@clement_chsn/pi-ask-user",
+  "version": "0.1.0",
+  "description": "Interactive Pi questionnaires: single or multiple choice, free text and a review before sending.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/ask-user"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/ask-user#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-tui": "catalog:",
+    "typebox": "catalog:"
+  }
+}
