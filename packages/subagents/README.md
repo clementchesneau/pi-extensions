@@ -4,6 +4,11 @@ Cette extension permet à une session Pi parent de déléguer des missions gén�
 sessions Pi enfants indépendantes. Chaque enfant utilise le répertoire de travail du parent :
 l’extension ne crée ni worktree, ni sandbox, ni rollback des écritures déjà réalisées.
 
+Plateformes : macOS et Linux. L’arrêt des enfants et de leurs descendants s’appuie sur les
+groupes de processus et sur `/bin/ps` ; sous Linux, installer `procps` (`procps-ng` sur Alpine)
+lorsqu’il manque, par exemple dans une image Docker `slim`. Sans `ps` compatible, ou sous
+Windows, `subagent_start` refuse la mission avant de lancer un processus et indique la cause.
+
 ## Utilisation
 
 Les outils du parent sont :
@@ -279,7 +284,7 @@ la cohérence CLI/SDK, pas le runtime d’une session déjà ouverte ni une miss
 On peut aussi lancer `node scripts/check-pi-compat.mjs` depuis la racine du dépôt pour
 éviter le bootstrap pnpm/Corepack ; cela ne télécharge pas de SDK.
 
-Support actuel : Node sur macOS, installation npm/pnpm avec SDK ESM accessible. Bun
+Support actuel : Node sur macOS ou Linux, installation npm/pnpm avec SDK ESM accessible. Bun
 compilé, Node SEA et nouvelles plateformes ne sont pas revendiqués. Les intégrations
 locales se rejouent après une mise à jour, sans clés réelles :
 

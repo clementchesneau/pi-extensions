@@ -12,6 +12,8 @@ import { resolveHostPiRuntime } from '../packages/subagents/pi-compatibility.js'
 import { createSubagentRuntime } from '../packages/subagents/runtime.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// Process-group cleanup is verified on these platforms only; elsewhere startup refuses before spawning.
+const processCleanupVerified = ['darwin', 'linux'].includes(process.platform);
 const providerPath = join(here, 'fixtures/subagents/deterministic-provider.js');
 const orphanParentPath = join(here, 'fixtures/subagents/orphan-parent.mjs');
 const blockingShutdownPath = join(here, 'fixtures/subagents/blocking-shutdown.js');
@@ -428,7 +430,7 @@ test('real worker rejects steering after agent_end without leaking it into the n
 
 test(
   'real worker crash immediately after spawning children still cleans both groups',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const directory = await mkdtemp(join(tmpdir(), 'subagent-real-crash-'));
     const agentDir = directory;
@@ -493,7 +495,7 @@ test(
 
 test(
   'real worker crash immediately after detached fork still cleans the forked group',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const directory = await mkdtemp(join(tmpdir(), 'subagent-real-fork-crash-'));
     const pidFile = join(directory, 'pids.json');
@@ -557,7 +559,7 @@ test(
 
 test(
   'runtime cleans a detached group after its recorded leader exits before the worker crashes',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const directory = await mkdtemp(join(tmpdir(), 'subagent-orphaned-group-'));
     const pidFile = join(directory, 'leader.json');
@@ -670,7 +672,7 @@ test('worker interception preserves the native promisify contract of exec and ex
   });
 });
 
-test('stop cleans a detached child created by session_shutdown', { skip: process.platform !== 'darwin' }, async t => {
+test('stop cleans a detached child created by session_shutdown', { skip: !processCleanupVerified }, async t => {
   const agentDir = await mkdtemp(join(tmpdir(), 'subagent-shutdown-child-'));
   const provider = await deterministicServer();
   const pidFile = join(agentDir, 'shutdown-child.pid');
@@ -729,7 +731,7 @@ test('stop cleans a detached child created by session_shutdown', { skip: process
 
 test(
   'IPC loss during bootstrap cleans children started before runtime creation',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const agentDir = await mkdtemp(join(tmpdir(), 'subagent-bootstrap-loss-'));
     const pidFile = join(agentDir, 'child.pid');
@@ -801,7 +803,7 @@ test(
 
 test(
   'parent-loss cleanup includes tracked groups whose leader already exited',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const agentDir = await mkdtemp(join(tmpdir(), 'subagent-parent-loss-orphaned-group-'));
     const provider = await deterministicServer();
@@ -965,7 +967,7 @@ test('parent-loss escalation survives an immediately exiting worker', async t =>
 
 test(
   'disconnect watchdog reconciles a child created by session_shutdown',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const agentDir = await mkdtemp(join(tmpdir(), 'subagent-disconnect-shutdown-child-'));
     const provider = await deterministicServer();
@@ -1058,7 +1060,7 @@ test(
 
 test(
   'one-shot watchdog kills a blocked worker when IPC closes but its parent stays alive',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const agentDir = await mkdtemp(join(tmpdir(), 'subagent-live-parent-disconnect-'));
     const provider = await deterministicServer();

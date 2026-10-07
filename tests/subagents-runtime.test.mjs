@@ -15,6 +15,8 @@ import { PS_ARGS, PS_COMMAND, parseProcessRows } from '../packages/shared/proces
 import { piRuntime } from './fixtures/subagents/host-runtime.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// Process-group cleanup is verified on these platforms only; elsewhere startup refuses before spawning.
+const processCleanupVerified = ['darwin', 'linux'].includes(process.platform);
 const fakeWorker = join(here, 'fixtures/subagents/fake-rpc.mjs');
 const psRows = () => parseProcessRows(execFileSync(PS_COMMAND, PS_ARGS, { encoding: 'utf8' }));
 const baseBootstrap = () => ({
@@ -621,7 +623,7 @@ test('a throwing settled subscriber cannot prevent result resolution', async t =
 
 test(
   'spawn failure rejects startup without an unhandled child-process error',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async () => {
     const missingCwd = join(tmpdir(), `missing-subagent-cwd-${randomUUID()}`);
     const runtime = createSubagentRuntime(
@@ -635,7 +637,97 @@ test(
   },
 );
 
-test('cleanup can be retried after process observation recovers', { skip: process.platform !== 'darwin' }, async t => {
+/** Kills a worker that startup should have refused, so a regression cannot hang the suite. */
+function killStrayWorker(runtime) {
+  if (!runtime.pid) return;
+  try {
+    process.kill(-runtime.pid, 'SIGKILL');
+  } catch {}
+}
+
+test('startup refuses a platform without verified process cleanup before spawning a worker', async t => {
+  for (const platform of ['freebsd', 'win32']) {
+    const runtime = createSubagentRuntime(baseBootstrap(), {
+      workerPath: fakeWorker,
+      startupTimeoutMs: 2_000,
+      platform,
+    });
+    t.after(() => killStrayWorker(runtime));
+    await assert.rejects(runtime.start(), new RegExp(`not verified on ${platform}.*macOS and Linux`));
+    assert.equal(runtime.status, 'failed');
+    assert.equal(runtime.pid, undefined, 'no worker may run without a verified way to stop it');
+  }
+});
+
+test('startup explains how to provide ps before spawning a worker it could not stop', async t => {
+  const runtime = createSubagentRuntime(baseBootstrap(), {
+    workerPath: fakeWorker,
+    startupTimeoutMs: 2_000,
+    processSnapshot: () => {
+      throw new Error('Process observation failed: spawn /bin/ps ENOENT');
+    },
+  });
+  t.after(() => killStrayWorker(runtime));
+  await assert.rejects(runtime.start(), error => {
+    assert.match(error.message, /\/bin\/ps/);
+    assert.match(error.message, /procps/, 'names the Linux package that provides a compatible ps');
+    assert.match(error.message, /ENOENT/, 'keeps the underlying observation failure');
+    return true;
+  });
+  assert.equal(runtime.status, 'failed');
+  assert.equal(runtime.pid, undefined, 'no worker may run without a verified way to stop it');
+});
+
+/** Stops the runtime while its cleanup check is pending, then lets the check settle with `outcome`. */
+async function stopDuringCleanupCheck(t, outcome) {
+  let markChecking;
+  let releaseCheck;
+  const checking = new Promise(resolve => {
+    markChecking = resolve;
+  });
+  const checkGate = new Promise(resolve => {
+    releaseCheck = resolve;
+  });
+  const runtime = createSubagentRuntime(baseBootstrap(), {
+    workerPath: fakeWorker,
+    startupTimeoutMs: 2_000,
+    processSnapshot: async () => {
+      markChecking();
+      await checkGate;
+      return outcome();
+    },
+  });
+  t.after(() => killStrayWorker(runtime));
+  const starting = runtime.start();
+  await checking;
+  await runtime.stop();
+  releaseCheck();
+  return { runtime, starting };
+}
+
+test(
+  'stop during the process cleanup check prevents the worker from spawning',
+  { skip: !processCleanupVerified },
+  async t => {
+    const { runtime, starting } = await stopDuringCleanupCheck(t, psRows);
+    await assert.rejects(starting, /startup was stopped/);
+    assert.equal(runtime.pid, undefined, 'a stopped runtime must not leave a worker behind');
+    assert.equal(runtime.status, 'stopped');
+  },
+);
+
+test('a cleanup check failing after stop leaves the runtime stopped', async t => {
+  const { runtime, starting } = await stopDuringCleanupCheck(t, () => {
+    throw new Error('Process observation failed: spawn /bin/ps ENOENT');
+  });
+  await assert.rejects(starting, /\/bin\/ps/);
+  assert.equal(runtime.status, 'stopped', 'a completed stop is final');
+  await runtime.stop();
+  assert.equal(runtime.status, 'stopped');
+  assert.equal(runtime.pid, undefined);
+});
+
+test('cleanup can be retried after process observation recovers', { skip: !processCleanupVerified }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'subagent-ps-recovery-'));
   const pidFile = join(directory, 'pids.json');
   let pids = [];
@@ -691,7 +783,7 @@ test('cleanup can be retried after process observation recovers', { skip: proces
 
 test(
   'a cleanup deadline keeps the process registry until a successful retry',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const readSnapshot = psRows;
     const directory = await mkdtemp(join(tmpdir(), 'subagent-deadline-'));
@@ -776,19 +868,15 @@ async function stopWithDescendant(zombiePid, describe) {
   return runtime;
 }
 
-test(
-  'cleanup skips a tracked process group that only holds zombies',
-  { skip: process.platform !== 'darwin' },
-  async t => {
-    const zombiePid = await zombieGroup(t);
-    const runtime = await stopWithDescendant(zombiePid, row => row);
-    assert.equal(runtime.status, 'stopped');
-  },
-);
+test('cleanup skips a tracked process group that only holds zombies', { skip: !processCleanupVerified }, async t => {
+  const zombiePid = await zombieGroup(t);
+  const runtime = await stopWithDescendant(zombiePid, row => row);
+  assert.equal(runtime.status, 'stopped');
+});
 
 test(
   'cleanup tolerates a group whose last member became a zombie after it was observed',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const zombiePid = await zombieGroup(t);
     // Observed alive until the first signal, as when a browser exits during cleanup.
@@ -806,7 +894,7 @@ test(
 
 test(
   'cleanup keeps signalling later groups when an exiting group answers EPERM',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     // As the worker's guardian after a crash: killpg answers EPERM while the next
     // observation still lists the exiting process as alive.
@@ -930,7 +1018,7 @@ test('stop clears queued work before aborting an active run', async t => {
 
 test(
   'cooperative worker exit still removes surviving ordinary and detached descendants',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const directory = await mkdtemp(join(tmpdir(), 'subagent-cooperative-stop-'));
     const pidFile = join(directory, 'pids.json');
@@ -971,7 +1059,7 @@ test(
 
 test(
   'a worker crash still removes descendants captured before reparenting',
-  { skip: process.platform !== 'darwin' },
+  { skip: !processCleanupVerified },
   async t => {
     const directory = await mkdtemp(join(tmpdir(), 'subagent-crash-stop-'));
     const pidFile = join(directory, 'pids.json');

@@ -12,7 +12,7 @@ Extensions personnelles pour Pi.
 | [session-compaction](packages/session-compaction/README.md) | Compaction volontaire dès 60 %, couleur du pourcentage de contexte dans Graphite et mémoire temporaire par fichiers hors dépôt | Seuil automatique natif inchangé ; mémoire supprimée à la fermeture, index et lectures ciblées après compaction |
 | [web](packages/web/README.md) | Recherche Brave, lecture Markdown et documentation versionnée Context7 | `BRAVE_API_KEY` et/ou `CONTEXT7_API_KEY` dans `~/.config/pi-extensions/.env` ou l’environnement |
 | [ui-check](packages/ui-check/README.md) | Navigateur Chromium à la demande : interactions, captures et diagnostics UI | Installer Chromium via Playwright ; modèle acceptant les images pour les captures |
-| [subagents](packages/subagents/README.md) | Délégation asynchrone généraliste vers des sessions Pi enfants | Modèle parent disponible ; les missions consomment des appels modèle supplémentaires |
+| [subagents](packages/subagents/README.md) | Délégation asynchrone généraliste vers des sessions Pi enfants | macOS ou Linux (`ps` de procps) ; modèle parent disponible ; les missions consomment des appels modèle supplémentaires |
 | [background-tasks](packages/background-tasks/README.md) | Commandes shell non interactives en arrière-plan, suivies par ID | Processus arrêtés à la fermeture ou au changement de session ; logs privés temporaires |
 | [ask-user](packages/ask-user/README.md) | Questions de l’agent : choix unique/multiple, réponse libre et récapitulatif avant envoi | Terminal interactif uniquement ; aucune configuration |
 
@@ -111,12 +111,14 @@ Ce contrôle inclut aussi les assets du répertoire SDK surveillé, pas les fich
 `pnpm check:pi` examine l’installation Pi externe, hors des shims `node_modules/.bin` ;
 un launcher shell est identifié par une sonde Pi privée sans prompt, dans un HOME temporaire.
 Ce diagnostic ne décrit pas une session déjà ouverte et ne remplace pas les tests d’intégration.
-La frontière actuelle est Node sur macOS, avec une installation npm/pnpm dont le SDK ESM
+La frontière actuelle est Node sur macOS ou Linux, avec une installation npm/pnpm dont le SDK ESM
 est accessible ; Bun compilé et Node SEA ne sont pas pris en charge. Après une mise à jour,
 rejouer les intégrations : la présence des exports ne garantit pas toute compatibilité future.
 
-L’arrêt coopératif puis forcé des groupes de processus est actuellement vérifié et autorisé
-uniquement sur macOS. Le point d’entrée `packages/subagents/index.js` est déclaré dans
+L’arrêt coopératif puis forcé des groupes de processus est vérifié et autorisé sur macOS et
+Linux. Il lit l’arbre des processus avec `/bin/ps` : sous Linux, celui de procps (absent des
+images `slim`, remplacé par BusyBox sur Alpine). Sans `ps` compatible ou sur une autre
+plateforme, le lancement d’un enfant est refusé avant tout processus. Le point d’entrée `packages/subagents/index.js` est déclaré dans
 `pi.extensions` : les outils `subagent_*` et `/subagents` sont donc disponibles dans une
 session parent. En TUI, `/subagents` ouvre la liste et le détail, et
 `/subagents settings` édite les réglages utilisateur ; un widget nommé coexiste avec

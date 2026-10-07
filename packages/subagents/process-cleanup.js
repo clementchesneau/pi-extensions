@@ -36,6 +36,26 @@ export async function processSnapshot() {
   return rows;
 }
 
+// Platforms where stopping a worker's process groups has been verified by the cleanup tests.
+const VERIFIED_PLATFORMS = new Set(['darwin', 'linux']);
+
+/** Rejects before a worker is spawned when its process tree could not be observed and stopped. */
+export async function assertProcessCleanupAvailable(platform, readSnapshot = processSnapshot) {
+  if (!VERIFIED_PLATFORMS.has(platform)) {
+    throw new Error(`Subagent process cleanup is not verified on ${platform}; only macOS and Linux are supported`);
+  }
+  try {
+    const rows = await readSnapshot();
+    if (!rows.some(row => row.pid === process.pid)) throw new Error('its output does not list this process');
+  } catch (error) {
+    throw new Error(
+      `Subagents need ${PS_COMMAND} accepting "${PS_ARGS.join(' ')}" to stop their processes ` +
+        `(on Linux, install procps; BusyBox ps is not compatible): ${error.message}`,
+      { cause: error },
+    );
+  }
+}
+
 /** @internal Pure identity check used by process-cleanup tests. */
 export function resolveTrackedProcessSnapshot(entries, rows, parentPgid) {
   const byPid = new Map(rows.map(row => [row.pid, row]));

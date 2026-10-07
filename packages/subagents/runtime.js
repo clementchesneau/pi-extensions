@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertWorkerMatchesBootstrap, validateBootstrap, workerReadiness } from './bootstrap.js';
 import { validatePiRuntimeDescriptor } from './pi-compatibility.js';
-import { processSnapshot, WorkerProcessTree } from './process-cleanup.js';
+import { assertProcessCleanupAvailable, processSnapshot, WorkerProcessTree } from './process-cleanup.js';
 import { createRpcConnection, ProtocolError } from './protocol.js';
 import { applySessionStats, createRun, recordAssistant, settledResult, TELEMETRY_EVENTS } from './run-telemetry.js';
 
@@ -95,16 +95,19 @@ export class SubagentRuntime {
   }
 
   async #start() {
-    if (process.platform !== 'darwin') {
-      this.status = 'failed';
-      throw new Error(`Subagent process cleanup is not verified on ${process.platform}; only darwin is supported`);
-    }
     try {
+      await assertProcessCleanupAvailable(
+        this.#options.platform ?? process.platform,
+        this.#options.processSnapshot ?? processSnapshot,
+      );
       validatePiRuntimeDescriptor(this.#bootstrap.piRuntime);
     } catch (error) {
-      this.status = 'failed';
+      // A stop() that settled while the check was pending stays final.
+      if (this.status === 'starting') this.status = 'failed';
       throw error;
     }
+    // stop() may have settled while the check was pending: it found no worker to stop.
+    if (this.status !== 'starting') throw new Error('Subagent startup was stopped');
     const child = this.#spawnWorker();
     const ready = deferred();
     this.#startup = ready;
