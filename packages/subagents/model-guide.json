@@ -12,8 +12,7 @@
         "https://developers.openai.com/api/docs/models/gpt-6-luna",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "openai-codex",
@@ -23,8 +22,7 @@
       "effort": { "simple": "low", "standard": "medium", "complex": "high" },
       "tradeoff": "Positioned as comparable to Astra at lower cost for complex tasks; compare them on your own tasks. The none and minimal effort levels are unsupported.",
       "sources": ["https://developers.openai.com/api/docs/models/gpt-6.1-sol"],
-      "reviewedOn": "2026-09-29",
-      "status": "verified"
+      "reviewedOn": "2026-09-29"
     },
     {
       "provider": "openai-codex",
@@ -37,8 +35,7 @@
         "https://developers.openai.com/api/docs/models/gpt-6-sol",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "openai-codex",
@@ -51,8 +48,7 @@
         "https://developers.openai.com/api/docs/models/gpt-6-astra",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "openai-codex",
@@ -65,8 +61,7 @@
         "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "openai-codex",
@@ -79,8 +74,7 @@
         "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "openai-codex",
@@ -93,8 +87,7 @@
         "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "openai-codex",
@@ -107,8 +100,7 @@
         "https://developers.openai.com/api/docs/models/gpt-5.5",
         "https://developers.openai.com/api/docs/guides/reasoning"
       ],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "anthropic",
@@ -117,8 +109,7 @@
       "avoidFor": "Tasks requiring adaptive thinking to be disabled or non-standard sampling parameters.",
       "tradeoff": "Adaptive thinking is enabled by default; documentation indicates comparatively fast latency, varying by task and effort.",
       "sources": ["https://platform.claude.com/docs/en/models/sonnet-5/overview"],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "anthropic",
@@ -127,8 +118,7 @@
       "avoidFor": "Short, latency-sensitive tasks or tasks requiring thinking to be disabled.",
       "tradeoff": "Adaptive thinking is always active; documentation indicates moderately fast rather than fast comparative latency.",
       "sources": ["https://platform.claude.com/docs/en/models/opus-5-5/overview"],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "google",
@@ -137,8 +127,7 @@
       "avoidFor": "Image or audio generation, which this model does not support.",
       "tradeoff": "Flash model with low, medium, or high thinking in the Gemini API; the minimal level is unsupported.",
       "sources": ["https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     },
     {
       "provider": "deepseek",
@@ -147,8 +136,7 @@
       "avoidFor": "Tasks requiring an effort setting documented in this selection.",
       "tradeoff": "API identifier for V4.1-Flash; documentation describes it as focused on throughput and efficiency, without guaranteeing results on any particular task.",
       "sources": ["https://api-docs.deepseek.com/news/news260910/"],
-      "reviewedOn": "2026-09-27",
-      "status": "verified"
+      "reviewedOn": "2026-09-27"
     }
   ]
 }

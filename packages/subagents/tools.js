@@ -1,6 +1,6 @@
 import { Type } from 'typebox';
 import { Text } from '@earendil-works/pi-tui';
-import { availableModelGuide, DEFAULT_MODEL_GUIDE } from './model-guide.js';
+import { availableModelGuide, BUNDLED_MODEL_GUIDE, defaultModelGuidePath } from './model-guide.js';
 import { duration, stateLabel } from './format.js';
 import { jsonToolResult } from '@clement_chsn/pi-shared/tool-result';
 import { singleLineText } from '@clement_chsn/pi-shared/terminal-text';
@@ -104,6 +104,7 @@ const RESULT_LINES = {
       .slice(0, expanded ? 12 : 4)
       .map(item => `${singleLineText(item.provider)}/${singleLineText(item.modelId)} · ${excerpt(item.preferFor, 65)}`),
     ...(value.nextCursor !== undefined ? [`More available (cursor ${value.nextCursor}).`] : []),
+    ...(value.catalogueUpdate ? ['Bundled catalogue updated; your edited copy is kept.'] : []),
   ],
   subagent_list: value => [
     `${Array.isArray(value.items) ? value.items.length : 0} shown${value.nextCursor !== undefined ? ` · more available (cursor ${value.nextCursor})` : ''}`,
@@ -264,7 +265,7 @@ function stopTool({ manager }) {
   };
 }
 
-function modelsTool({ manager, modelGuidePath }) {
+function modelsTool({ manager, modelGuidePath, bundledModelGuidePath }) {
   return {
     name: 'subagent_models',
     label: 'Available Subagent Models',
@@ -278,7 +279,9 @@ function modelsTool({ manager, modelGuidePath }) {
     ],
     async execute(_id, input, _signal, _update, ctx) {
       manager(ctx);
-      return jsonToolResult(await availableModelGuide(ctx, { ...input, path: modelGuidePath }));
+      return jsonToolResult(
+        await availableModelGuide(ctx, { ...input, path: modelGuidePath, bundledPath: bundledModelGuidePath }),
+      );
     },
   };
 }
@@ -288,7 +291,8 @@ function modelsTool({ manager, modelGuidePath }) {
  *   getManager?: (ctx: unknown) => any,
  *   capture?: (ctx: any, input: any) => Promise<any>,
  *   onResultRead?: (identity: { agentId: string, runId: string }) => void,
- *   modelGuidePath?: URL,
+ *   modelGuidePath?: string,
+ *   bundledModelGuidePath?: string | URL,
  * }} [options]
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition[]}
  */
@@ -296,7 +300,8 @@ export function createSubagentTools({
   getManager,
   capture = async (_ctx, input) => input,
   onResultRead = () => {},
-  modelGuidePath = DEFAULT_MODEL_GUIDE,
+  modelGuidePath = defaultModelGuidePath(),
+  bundledModelGuidePath = BUNDLED_MODEL_GUIDE,
 } = {}) {
   if (typeof getManager !== 'function') throw new TypeError('getManager is required');
   const manager = ctx => {
@@ -304,7 +309,7 @@ export function createSubagentTools({
     if (!value) throw new Error('Subagent session is not active');
     return value;
   };
-  const deps = { manager, capture, onResultRead, modelGuidePath };
+  const deps = { manager, capture, onResultRead, modelGuidePath, bundledModelGuidePath };
   return [
     startTool(deps),
     sendTool(deps),

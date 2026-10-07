@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { link, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 export const CONFIG_VERSION = 1;
 export const DEFAULT_SUBAGENT_CONFIG = Object.freeze({ version: CONFIG_VERSION, autoDelegate: true, maxConcurrent: 4 });
@@ -60,18 +60,70 @@ async function acquireLock(path) {
   }
 }
 
-async function atomicWrite(path, config) {
-  const directory = dirname(path);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const temporary = join(directory, `.${randomUUID()}.subagents.json`);
+/** Publishes `source` at `path` only if nothing is there: link() never replaces a file. */
+async function publishIfAbsent(source, path) {
   try {
-    await writeFile(temporary, `${JSON.stringify(config)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-    await rename(temporary, path);
+    await link(source, path);
+    return true;
   } catch (error) {
-    await rm(temporary, { force: true }).catch(() => {});
-    throw new Error(`Cannot save subagent configuration: ${error.message}`, { cause: error });
+    if (error?.code === 'EEXIST') return false;
+    throw error;
   }
 }
+
+/**
+ * Replaces `path` with `temporary` only if `path` still holds `expected` (`null`: absent).
+ * The current file is moved aside before the comparison, so a save made meanwhile lands on a new
+ * file, which publishIfAbsent() keeps; a save made before the move is restored.
+ */
+async function replaceIfUnchanged(temporary, path, expected) {
+  if (expected === null) return publishIfAbsent(temporary, path);
+  const aside = join(dirname(path), `.${randomUUID()}.previous.${basename(path)}`);
+  try {
+    await rename(path, aside);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+  let restore = true;
+  try {
+    if (!(await readFile(aside)).equals(expected)) return false;
+    const published = await publishIfAbsent(temporary, path);
+    restore = false;
+    return published;
+  } finally {
+    // A newer file at `path` wins over the one moved aside; an unexpected error keeps `aside` on disk.
+    if (restore) await publishIfAbsent(aside, path);
+    await rm(aside, { force: true });
+  }
+}
+
+/**
+ * Replaces a private file atomically, so readers never see a partial write.
+ * With `expected` (previous content, `null` for absent), replaces it only if it still has that content.
+ * @param {string} path
+ * @param {string} text
+ * @param {string} label
+ * @param {{ expected?: Buffer | null }} [options]
+ * @returns {Promise<boolean>} whether the file was replaced
+ */
+export async function writePrivateFile(path, text, label, { expected } = {}) {
+  const directory = dirname(path);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const temporary = join(directory, `.${randomUUID()}.${basename(path)}`);
+  try {
+    await writeFile(temporary, text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    if (expected !== undefined) return await replaceIfUnchanged(temporary, path, expected);
+    await rename(temporary, path);
+    return true;
+  } catch (error) {
+    throw new Error(`Cannot save ${label}: ${error.message}`, { cause: error });
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {});
+  }
+}
+
+const atomicWrite = (path, config) => writePrivateFile(path, `${JSON.stringify(config)}\n`, 'subagent configuration');
 
 export async function loadSubagentConfig({ path = defaultConfigPath() } = {}) {
   const existing = await readExisting(path);

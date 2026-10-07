@@ -6,6 +6,7 @@ import {
 import { connectActivityIndicator } from '@clement_chsn/pi-shared/activity-indicator';
 import { defaultConfigPath, loadSubagentConfig, updateSubagentConfig } from './config.js';
 import { formatSubagentContext } from './delivery.js';
+import { defaultModelGuidePath } from './model-guide.js';
 import { createSubagentRuntime } from './runtime.js';
 import { isPiCliProcess, loadHostPiRuntime, loadParentPiHost, resolveHostPiRuntime } from './pi-compatibility.js';
 import { createSubagentSession, notify, STATE_ENTRY, summary } from './session.js';
@@ -80,6 +81,7 @@ function createExtensionState(options, initializationError) {
  *   sdk?: typeof import('@earendil-works/pi-coding-agent'),
  *   agentDir?: string,
  *   configPath?: string,
+ *   modelGuidePath?: string,
  *   createRuntime?: typeof createSubagentRuntime,
  *   dialogTimeoutMs?: number,
  * }} [options]
@@ -91,6 +93,7 @@ function initializeSubagents(
     sdk,
     agentDir = sdk.getAgentDir(),
     configPath = defaultConfigPath(),
+    modelGuidePath = defaultModelGuidePath(),
     createRuntime = createSubagentRuntime,
     dialogTimeoutMs = 30_000,
   } = {},
@@ -103,6 +106,7 @@ function initializeSubagents(
     getManager: () => ext.runtime?.manager,
     capture: (ctx, input) => capture(pi, ext, ctx, input),
     onResultRead: identity => ext.runtime?.readRuns?.add(readKey(identity)),
+    modelGuidePath,
   });
   for (const tool of tools) pi.registerTool(tool);
   registerSessionLifecycle(pi, ext, indicator);

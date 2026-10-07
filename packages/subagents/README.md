@@ -8,8 +8,8 @@ l’extension ne crée ni worktree, ni sandbox, ni rollback des écritures déj�
 
 Les outils du parent sont :
 
-- `subagent_models` — consulte, par pages, les fiches éditables qui correspondent aux modèles
-  actuellement disponibles selon Pi, indépendamment de la liste de rotation des modèles.
+- `subagent_models` — consulte, par pages, les fiches du catalogue utilisateur qui correspondent
+  aux modèles actuellement disponibles selon Pi, indépendamment de la liste de rotation des modèles.
   Il indique capacités et tarifs déclarés par Pi, mais ne mesure ni qualité réelle ni latence ;
 - `subagent_start` — accepte une mission, son contexte sélectionné et, facultativement, un
   modèle, un niveau de raisonnement ou une liste d’outils restreinte. Le parent respecte les
@@ -31,17 +31,26 @@ l’historique complet du parent. Il hérite des capacités reproductibles appli
 ne peut pas déléguer à son tour via cette extension. Un outil absent ou non reproductible
 est signalé plutôt que remplacé silencieusement.
 
-Les recommandations sont éditables dans `packages/subagents/model-guide.json` (`version: 1`,
-`models` avec `provider`, `id`, `preferFor`, `avoidFor`, `tradeoff`, `sources`, `reviewedOn`,
-`status` et éventuellement `effort` pour `simple`, `standard`, `complex`). `verified`
-indique une fiche sourcée par une documentation fabricant, pas une qualité démontrée par
-benchmark. Elles sont relues
-à chaque consultation. Pour ajouter un modèle, vérifier d’abord son identifiant exact
-et documenter la fiche avec une source et une date. Les prix et la disponibilité viennent
+Les recommandations sont lues dans `~/.config/pi-extensions/subagent-models.json`, relu à
+chaque consultation. La première consultation le génère à partir du catalogue livré
+(`packages/subagents/model-guide.json`), avec une empreinte de son contenu dans `generated`.
+Tant que ses fiches ne sont pas modifiées, il suit les mises à jour du package ; un simple
+reformatage ne compte pas comme une modification. Dès qu’une fiche est modifiée, ajoutée ou
+supprimée, le fichier appartient à l’utilisateur : il n’est plus jamais réécrit, et
+`subagent_models` signale une mise à jour ultérieure du catalogue livré. Supprimer le fichier
+le régénère et reprend les mises à jour ; les modifications personnelles sont alors à reporter.
+
+Format : `version: 1`, `models` avec `provider`, `id`, `preferFor`, `avoidFor`, `tradeoff` et,
+facultativement, `effort` pour `simple`, `standard`, `complex`, `sources` (URL `https://`) et
+`reviewedOn` (`AAAA-MM-JJ`). Une fiche sourcée renvoie à une documentation fabricant, pas à une
+qualité démontrée par benchmark ; une fiche sans source est un avis personnel. Les fiches du
+catalogue livré ont toujours une source et une date. Pour ajouter un modèle, vérifier d’abord
+son identifiant exact. Un ancien champ `status` est ignoré. Les prix et la disponibilité viennent
 de Pi, non de ce fichier : les tarifs API ne représentent pas nécessairement la facturation
 d’un abonnement. Une fiche non disponible dans Pi n’est pas proposée ; un modèle disponible
 sans fiche peut toujours être spécifié explicitement mais n’a pas d’avis qualitatif associé.
-Un fichier illisible ou invalide produit une erreur explicite, sans choix automatique.
+Un fichier illisible ou invalide produit une erreur explicite, sans choix automatique ni
+remplacement par le catalogue livré.
 
 L’état inséré dans l’historique du parent ne garde que les dix runs récents et leur nombre total ;
 les identifiants plus anciens restent consultables par la pagination de `subagent_list`.
