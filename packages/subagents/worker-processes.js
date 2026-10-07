@@ -9,6 +9,7 @@ import {
   parseProcessRows,
   PS_ARGS,
   PS_COMMAND,
+  PS_ENV,
   readTrackedChildren,
 } from '@clement_chsn/pi-shared/process-tree';
 
@@ -23,9 +24,10 @@ const guardEnv = () => ({ PATH: process.env.PATH ?? '/usr/bin:/bin' });
 /** `{ pid, pgid, start }` of a live process, or undefined. */
 function inspectProcess(pid) {
   try {
-    const identity = nativeExecFileSync('/bin/ps', ['-p', String(pid), '-o', 'pgid=,lstart='], {
+    const identity = nativeExecFileSync(PS_COMMAND, ['-p', String(pid), '-o', 'pgid=,lstart='], {
       encoding: 'utf8',
       timeout: 500,
+      env: PS_ENV,
     }).trim();
     const match = /^(\d+)\s+(.+)$/u.exec(identity);
     return match ? { pid, pgid: Number(match[1]), start: match[2].trim() } : undefined;
@@ -113,7 +115,7 @@ export function collectTrackedTree({ trackFile, guardianPid }) {
   let rows = [];
   try {
     rows = parseProcessRows(
-      nativeExecFileSync(PS_COMMAND, PS_ARGS, { encoding: 'utf8', timeout: 500, maxBuffer: 1024 * 1024 }),
+      nativeExecFileSync(PS_COMMAND, PS_ARGS, { encoding: 'utf8', timeout: 500, maxBuffer: 1024 * 1024, env: PS_ENV }),
     );
   } catch {}
   return collectCleanupTargets(rows, {

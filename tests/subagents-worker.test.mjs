@@ -1058,75 +1058,86 @@ test(
   },
 );
 
+// The worker records identities with its own TZ and locale; its watchdogs run with a minimal environment.
+const foreignTimeZone = { TZ: 'JST-9' };
+
+async function assertWatchdogKillsBlockedWorker(t, workerEnv = {}) {
+  const agentDir = await mkdtemp(join(tmpdir(), 'subagent-live-parent-disconnect-'));
+  const provider = await deterministicServer();
+  const worker = fork(realWorkerPath, [], {
+    silent: true,
+    detached: true,
+    env: { ...process.env, ...workerEnv, SUBAGENT_TEST_PROVIDER_URL: provider.url, PI_OFFLINE: '1' },
+  });
+  t.after(async () => {
+    try {
+      process.kill(-worker.pid, 'SIGKILL');
+    } catch {}
+    try {
+      process.kill(worker.pid, 'SIGKILL');
+    } catch {}
+    await new Promise(resolve => provider.server.close(resolve));
+    await rm(agentDir, { recursive: true, force: true });
+  });
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('worker did not become ready')), 10_000);
+    worker.on('message', message => {
+      if (message?.type === 'subagent-ready') {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+    worker.once('error', reject);
+  });
+  worker.send({
+    type: 'subagent-bootstrap',
+    bootstrap: {
+      version: 1,
+      piRuntime,
+      instanceId: `live-parent-${Date.now()}`,
+      parentSessionId: 'parent',
+      cwd: process.cwd(),
+      agentDir,
+      model: { provider: 'subagent-test', id: 'deterministic' },
+      thinkingLevel: 'off',
+      allowedTools: [],
+      resources: {
+        extensionPaths: [providerPath, blockingSyncShutdownPath],
+        skillPaths: [],
+        promptTemplatePaths: [],
+        contextFiles: false,
+      },
+    },
+  });
+  await ready;
+  worker.disconnect();
+  const exists = () => {
+    try {
+      process.kill(worker.pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === 'ESRCH') return false;
+      throw error;
+    }
+  };
+  const deadline = Date.now() + 3_200;
+  while (exists() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(exists(), false);
+}
+
 test(
   'one-shot watchdog kills a blocked worker when IPC closes but its parent stays alive',
   { skip: !processCleanupVerified },
-  async t => {
-    const agentDir = await mkdtemp(join(tmpdir(), 'subagent-live-parent-disconnect-'));
-    const provider = await deterministicServer();
-    const worker = fork(realWorkerPath, [], {
-      silent: true,
-      detached: true,
-      env: { ...process.env, SUBAGENT_TEST_PROVIDER_URL: provider.url, PI_OFFLINE: '1' },
-    });
-    t.after(async () => {
-      try {
-        process.kill(-worker.pid, 'SIGKILL');
-      } catch {}
-      try {
-        process.kill(worker.pid, 'SIGKILL');
-      } catch {}
-      await new Promise(resolve => provider.server.close(resolve));
-      await rm(agentDir, { recursive: true, force: true });
-    });
-    const ready = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('worker did not become ready')), 10_000);
-      worker.on('message', message => {
-        if (message?.type === 'subagent-ready') {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-      worker.once('error', reject);
-    });
-    worker.send({
-      type: 'subagent-bootstrap',
-      bootstrap: {
-        version: 1,
-        piRuntime,
-        instanceId: `live-parent-${Date.now()}`,
-        parentSessionId: 'parent',
-        cwd: process.cwd(),
-        agentDir,
-        model: { provider: 'subagent-test', id: 'deterministic' },
-        thinkingLevel: 'off',
-        allowedTools: [],
-        resources: {
-          extensionPaths: [providerPath, blockingSyncShutdownPath],
-          skillPaths: [],
-          promptTemplatePaths: [],
-          contextFiles: false,
-        },
-      },
-    });
-    await ready;
-    worker.disconnect();
-    const exists = () => {
-      try {
-        process.kill(worker.pid, 0);
-        return true;
-      } catch (error) {
-        if (error.code === 'ESRCH') return false;
-        throw error;
-      }
-    };
-    const deadline = Date.now() + 3_200;
-    while (exists() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-    assert.equal(exists(), false);
-  },
+  t => assertWatchdogKillsBlockedWorker(t),
 );
 
-test('external guardian kills a worker whose shutdown hook blocks the event loop', async t => {
+test(
+  'one-shot watchdog recognises a blocked worker running in another time zone',
+  { skip: !processCleanupVerified },
+  t => assertWatchdogKillsBlockedWorker(t, foreignTimeZone),
+);
+
+async function assertGuardianKillsBlockedWorker(t, workerEnv = {}) {
   const agentDir = await mkdtemp(join(tmpdir(), 'subagent-sync-block-'));
   const provider = await deterministicServer();
   const pidFile = join(agentDir, 'children.json');
@@ -1170,7 +1181,12 @@ test('external guardian kills a worker whose shutdown hook blocks the event loop
         },
       },
       options: {
-        env: { SUBAGENT_TEST_PROVIDER_URL: provider.url, SUBAGENT_TEST_PID_FILE: pidFile, PI_OFFLINE: '1' },
+        env: {
+          ...workerEnv,
+          SUBAGENT_TEST_PROVIDER_URL: provider.url,
+          SUBAGENT_TEST_PID_FILE: pidFile,
+          PI_OFFLINE: '1',
+        },
         startupTimeoutMs: 10_000,
       },
     });
@@ -1199,7 +1215,13 @@ test('external guardian kills a worker whose shutdown hook blocks the event loop
     } catch {}
   }
   assert.deepEqual(survivors, []);
-});
+}
+
+test('external guardian kills a worker whose shutdown hook blocks the event loop', t =>
+  assertGuardianKillsBlockedWorker(t));
+
+test('external guardian recognises a blocked worker running in another time zone', t =>
+  assertGuardianKillsBlockedWorker(t, foreignTimeZone));
 
 test('real worker bounds shutdown when parent IPC disappears and a shutdown hook blocks', async t => {
   const agentDir = await mkdtemp(join(tmpdir(), 'subagent-orphan-'));

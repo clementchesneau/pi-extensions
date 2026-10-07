@@ -8,6 +8,7 @@ import {
   parseProcessRows,
   PS_ARGS,
   PS_COMMAND,
+  PS_ENV,
   readTrackedChildren,
 } from '@clement_chsn/pi-shared/process-tree';
 
@@ -20,7 +21,7 @@ function mergeProcessSnapshots(current, observed) {
 
 function execFileBounded(command, args, timeout = 500) {
   return new Promise((resolve, reject) =>
-    execFile(command, args, { timeout, maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    execFile(command, args, { timeout, maxBuffer: 1024 * 1024, env: PS_ENV }, (error, stdout) => {
       if (error) reject(new Error(`Process observation failed: ${error.message}`, { cause: error }));
       else resolve(stdout);
     }),

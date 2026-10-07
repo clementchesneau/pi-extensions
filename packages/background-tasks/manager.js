@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isZombie, parseProcessRows, PS_ARGS, PS_COMMAND } from '@clement_chsn/pi-shared/process-tree';
+import { isZombie, parseProcessRows, PS_ARGS, PS_COMMAND, PS_ENV } from '@clement_chsn/pi-shared/process-tree';
 import { appendOutput, createTaskLogs, textPageRange } from './task-logs.js';
 
 const PAGE_LIMIT = 16 * 1024;
@@ -11,7 +11,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function processRows() {
   return new Promise((resolve, reject) =>
-    execFile(PS_COMMAND, PS_ARGS, { timeout: 1000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
+    execFile(PS_COMMAND, PS_ARGS, { timeout: 1000, maxBuffer: 2 * 1024 * 1024, env: PS_ENV }, (error, stdout) => {
       if (error) return reject(error);
       const rows = parseProcessRows(stdout);
       if (!rows.length) return reject(new Error('Process observation returned no rows'));

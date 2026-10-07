@@ -4,6 +4,7 @@ import {
   parseProcessRows,
   PS_ARGS,
   PS_COMMAND,
+  PS_ENV,
   readTrackedChildren,
 } from '@clement_chsn/pi-shared/process-tree';
 
@@ -11,7 +12,7 @@ const config = JSON.parse(process.argv[2] ?? '{"groups":[],"pids":[]}');
 
 function snapshot() {
   return new Promise(resolve => {
-    execFile(PS_COMMAND, PS_ARGS, { timeout: 500, maxBuffer: 1024 * 1024 }, (_error, stdout = '') =>
+    execFile(PS_COMMAND, PS_ARGS, { timeout: 500, maxBuffer: 1024 * 1024, env: PS_ENV }, (_error, stdout = '') =>
       resolve(parseProcessRows(stdout)),
     );
   });

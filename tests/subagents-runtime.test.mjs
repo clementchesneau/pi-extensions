@@ -11,14 +11,14 @@ import test from 'node:test';
 import { JsonlDecoder, MAX_RECORD_BYTES, createRpcConnection } from '../packages/subagents/protocol.js';
 import { resolveTrackedProcessSnapshot } from '../packages/subagents/process-cleanup.js';
 import { createSubagentRuntime } from '../packages/subagents/runtime.js';
-import { PS_ARGS, PS_COMMAND, parseProcessRows } from '../packages/shared/process-tree.js';
+import { PS_ARGS, PS_COMMAND, PS_ENV, parseProcessRows } from '../packages/shared/process-tree.js';
 import { piRuntime } from './fixtures/subagents/host-runtime.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Process-group cleanup is verified on these platforms only; elsewhere startup refuses before spawning.
 const processCleanupVerified = ['darwin', 'linux'].includes(process.platform);
 const fakeWorker = join(here, 'fixtures/subagents/fake-rpc.mjs');
-const psRows = () => parseProcessRows(execFileSync(PS_COMMAND, PS_ARGS, { encoding: 'utf8' }));
+const psRows = () => parseProcessRows(execFileSync(PS_COMMAND, PS_ARGS, { encoding: 'utf8', env: PS_ENV }));
 const baseBootstrap = () => ({
   version: 1,
   piRuntime,

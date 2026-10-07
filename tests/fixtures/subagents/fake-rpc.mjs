@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
+import { PS_COMMAND, PS_ENV } from '../../../packages/shared/process-tree.js';
 
 const childTrackFile = process.env.PI_SUBAGENT_TRACK_FILE;
 delete process.env.PI_SUBAGENT_TRACK_FILE;
@@ -22,8 +23,9 @@ function spawnDescendants() {
       [ordinary, false],
       [detached, true],
     ]) {
-      const identity = execFileSync('ps', ['-p', String(child.pid), '-o', 'pgid=,lstart='], {
+      const identity = execFileSync(PS_COMMAND, ['-p', String(child.pid), '-o', 'pgid=,lstart='], {
         encoding: 'utf8',
+        env: PS_ENV,
       }).trim();
       const match = /^(\d+)\s+(.+)$/u.exec(identity);
       appendFileSync(

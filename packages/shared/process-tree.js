@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 /** `ps` invocation whose output parseProcessRows understands. Callers choose sync or async execution. */
 export const PS_COMMAND = '/bin/ps';
 export const PS_ARGS = ['-axo', 'pid=,ppid=,pgid=,stat=,lstart='];
+/**
+ * Environment of every `ps` call. lstart follows TZ and the locale, and identities recorded by
+ * one process are compared by another (a worker and its minimal-environment guardian).
+ */
+export const PS_ENV = { TZ: 'UTC0', LC_ALL: 'C' };
 
 const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/u;
 
