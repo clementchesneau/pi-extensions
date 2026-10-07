@@ -763,7 +763,7 @@ test('code_nav limits collections and bytes while saving complete output private
   assert.equal((await (await import('node:fs/promises')).stat(output.details.fullOutputPath)).mode & 0o777, 0o600);
 });
 
-test('shutdown waits for a client already closing after idle eviction', async t => {
+test('shutdown waits for a client already closing after idle eviction', { timeout: 5_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'pi-code-nav-closing-race-'));
   const source = join(root, 'sample.ts');
   await writeFile(source, 'const x = 1;');
@@ -795,7 +795,10 @@ test('shutdown waits for a client already closing after idle eviction', async t 
   });
 
   await manager.navigate({ action: 'symbols', path: source }, root);
+  // The idle timer is unref'd so it never keeps Pi alive; hold the loop open until it fires.
+  const keepAlive = setInterval(() => {}, 1_000);
   await closeStarted;
+  clearInterval(keepAlive);
   assert.equal(manager.size, 0);
   const shutdown = manager.close();
   const outcome = await Promise.race([

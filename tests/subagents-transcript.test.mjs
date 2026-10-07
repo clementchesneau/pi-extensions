@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as sdk from '@earendil-works/pi-coding-agent';
+import { setCapabilityOverrides } from '@earendil-works/pi-tui';
 import { ActivityTranscript, TranscriptReader } from '../packages/subagents/transcript.js';
 sdk.initTheme('dark');
 const assistant = (text, timestamp) => ({ role: 'assistant', timestamp, content: [{ type: 'text', text }] });
@@ -115,7 +116,10 @@ test('parallel active output stays bounded and a finalized result retires its tr
   assert.equal(occurrences(transcript.render(100).join('\n'), 'done'), 1);
 });
 
-test('activity strips main-transcript navigation markers while retaining native colors and links', () => {
+test('activity strips main-transcript navigation markers while retaining native colors and links', t => {
+  // Native components emit file links only for a terminal detected as supporting OSC 8.
+  setCapabilityOverrides({ hyperlinks: true });
+  t.after(() => setCapabilityOverrides({}));
   const transcript = new ActivityTranscript();
   transcript.appendArchive([{ role: 'user', content: 'Mission' }, assistant('## Native answer', 1)]);
   transcript.event({
