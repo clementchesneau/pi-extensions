@@ -1,0 +1,243 @@
+# Development
+
+## Setup
+
+Node.js 22.22.2 or newer and pnpm 10.26.2:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @clement_chsn/pi-ui-check exec playwright install chromium
+pnpm check
+pnpm test
+pnpm check:pi
+```
+
+`pnpm check` runs ESLint, TypeScript (`checkJs`) and Prettier; `pnpm format` applies the
+formatting. `pi -e .` loads every extension from the working tree; in a session that already
+loads them, `/reload` picks up a change.
+
+Size and complexity limits apply to all code. The `eslint-suppressions.json` baseline is empty
+and must stay so: fix a violation by splitting the code, not by adding it to the baseline.
+Likewise, no module carries `// @ts-nocheck`: fix a type error with a JSDoc annotation, not by
+excluding the module.
+
+Biome 2.5 was evaluated as a replacement for ESLint and Prettier, then rejected: it has no
+equivalent of `max-depth`, only measures cognitive complexity, and cannot forbid suppression
+comments the way `noInlineConfig` does. The speed gain is negligible at this size.
+
+## Packages
+
+Each extension is a standalone npm package in `packages/<name>/`, named
+`@clement_chsn/pi-<name>` and published under the MIT license. It declares its `pi` manifest,
+its own dependencies and, as `peerDependencies`, the packages Pi provides. Extensions work alone
+and complement each other only through `pi.events`.
+
+Shared code lives in `@clement_chsn/pi-shared` (`packages/shared/`): stateless modules, one file
+per topic, imported by name with an exact version. An extension never imports another package
+by relative path (ESLint rule); `tests/packages.test.mjs` checks that every import is declared by
+its package and that every extension loads alone. The versions of the packages Pi provides and of
+TypeScript are centralized in the `pnpm-workspace.yaml` catalog. The root is a private Pi package
+that loads every extension for development. Its `pi.extensions` manifest loads only the declared
+entry points, not helper modules.
+
+## Tests
+
+`pnpm test` runs every file in `tests/`; `node --test tests/<file>.test.mjs` runs one. Files are
+named after the extension they cover (`subagents-*`, `session-compaction-*`, `browser` for
+ui-check, and so on).
+
+The tests use a fake stdio LSP server, the local TypeScript server for a few integration
+regressions, simulated Brave and Context7 responses, isolated local HTTP servers, deterministic
+local OpenAI-compatible providers, and a real Chromium for ui-check. They use no real key,
+remote quota or model call. Runtime dependencies are local to each package; `typebox` is provided
+by Pi and installed in development for the tests.
+
+This does not make the tests network-free: Corepack can fetch pnpm when its cache is empty, and
+the real TypeScript tests can trigger an npm fetch. To block these, use private caches, npm
+offline mode and `COREPACK_ENABLE_NETWORK=0` with pnpm already available; `PI_OFFLINE` alone is
+not enough. `pnpm audit --prod` checks the runtime dependencies.
+
+What some suites cover, and what they do not:
+
+- **web**: the Brave and Context7 APIs are tested with boundary doubles for parameters,
+  authentication, cancellation, results and errors. No real key is read and no Context7 quota is
+  used. No multi-provider conversational test is claimed.
+- **ui-check**: an ephemeral local HTTP server and a real Chromium cover interactions, viewport,
+  viewport and component screenshots, diagnostics, UTF-8 truncation, private files, cancellation
+  and reopening. The registration contract checks that the extension adds only its tools and the
+  cleanup hook. They do not guarantee that the agent will always choose to check, or judge
+  alignment with a request: that remains the model's call.
+- **session-compaction**: real files and `SessionManager` cover settings and overrides, atomic
+  private storage, links and root replacement, careful cleanup, orphans, reload, tree, fork and
+  switch, pagination, index-only injection, voluntary boundaries, concurrent changes and stale or
+  cancelled continuations. Real RPC tests check the native summary, preserved tool results, model
+  resume, an index without full content, targeted reads, automatic compaction during a tool loop,
+  a voluntary request crossing the automatic threshold, a user follow-up taking priority without
+  resuming the replaced task, and cleanup on shutdown. Special-file regressions use real FIFOs in
+  isolated processes with a bounded forced stop; internal parents named `..cache` and their
+  symbolic aliases are refused too.
+
+## Testing against an installed Pi
+
+The tests run against the pinned development SDK by default. That SDK explains the test runtime,
+not the Pi version the extensions target.
+
+`pnpm check:pi` examines the Pi command found on `PATH`, excluding `node_modules/.bin` shims. A
+private probe loaded by the effective launcher identifies the host SDK, even when the launcher is
+a shell script outside the package. It uses a temporary private HOME, working directory and
+agent directory, no user extension and no model prompt, and deletes them afterwards. It checks
+the SDK contracts and CLI/SDK consistency, not an open session or a full mission. Running
+`node scripts/check-pi-compat.mjs` directly avoids the pnpm/Corepack bootstrap; neither
+downloads an SDK.
+
+To replay the integration tests against another Pi, point `PI_TEST_HOST_ENTRY` at the absolute
+path of its `dist/index.js` (`global` alone is not a recognized value). Replay them after each Pi
+update: the presence of the exports does not guarantee future compatibility.
+
+```sh
+PI_TEST_HOST_ENTRY="$(npm root -g)/@earendil-works/pi-coding-agent/dist/index.js" \
+  COREPACK_ENABLE_NETWORK=0 node --test \
+  tests/pi-compatibility.test.mjs tests/check-pi-compat.test.mjs \
+  tests/compaction-runtime.test.mjs \
+  tests/subagents-runtime.test.mjs tests/subagents-worker.test.mjs \
+  tests/subagents-parent-e2e.test.mjs tests/subagents-e2e.test.mjs \
+  tests/subagents-lifecycle.test.mjs tests/subagents-sdk-host.test.mjs
+```
+
+The subagents parent tests load a temporary package without a local Pi SDK, typebox or pi-tui,
+from a path containing spaces and a symlink. Fixtures carrying other versions check that there is
+no release allowlist, but do not prove how real future versions behave. The native SDK path
+without a CLI, with explicit injection or host aliases, is covered by
+`tests/subagents-sdk-host.test.mjs`. A private `TMPDIR` keeps independent test runs from sharing
+process registries.
+
+## Subagents demo without a key
+
+A deterministic provider runs two demo missions on an isolated profile and HOME; neither modifies
+the project:
+
+```sh
+DEMO_ROOT=$(mktemp -d)
+mkdir -p "$DEMO_ROOT/home" "$DEMO_ROOT/agent"
+node tests/fixtures/subagents/demo-server.mjs > "$DEMO_ROOT/server.log" 2>&1 &
+DEMO_SERVER_PID=$!
+# Copy the URL printed in server.log, for example http://127.0.0.1:54321/v1.
+HOME="$DEMO_ROOT/home" PI_CODING_AGENT_DIR="$DEMO_ROOT/agent" PI_OFFLINE=1 \
+  SUBAGENT_TEST_PROVIDER_URL="<URL from server.log>" \
+  pi --offline --no-extensions -e . -e ./tests/fixtures/subagents/deterministic-provider.js \
+  --model subagent-test/deterministic --no-session
+kill "$DEMO_SERVER_PID"
+rm -rf "$DEMO_ROOT"
+```
+
+In Pi, trust the project **for this session only**, then send `DEMO_START`. Open `/subagents`
+to watch both missions; the slow one reads `README.md` and finishes after about ten seconds.
+Scroll the Activity view while it runs, then press `r` for the final response and `i` for the
+information. On a second try, press `s` in its detail to test stopping one mission, then open
+`/subagents settings` and run `/graphite-ui off`. Resize the terminal to 120, 80 and 40 columns.
+This demo exercises the protocol, not the judgment of a real model.
+
+## Manual checks for ask-user
+
+Ask the agent, for example: "Use ask_user to ask me for a scope as a single choice, then several
+features, with a description for each option." Check number keys, checkboxes, free text added to
+a choice, going back, the summary and cancelling while typing. Retry in a narrow terminal and with
+long descriptions to check scrolling. While typing, enter an emoji or CJK text, resize to 24/25
+columns, then use **Option/Alt + ↑/↓** to reread a long question without losing the text. Also
+try a long summary in Pi fullscreen mode: the panel must scroll with these keys without moving
+the conversation.
+
+## Publishing
+
+```sh
+pnpm install --frozen-lockfile
+pnpm -r publish --dry-run
+pnpm -r publish
+```
+
+The dry run checks the ten packages; the root is private. `pnpm -r publish` publishes them with
+public access. pnpm replaces `workspace:*` and `catalog:` with exact versions in the published
+manifests.
+
+## Design notes
+
+Internals that the package READMEs leave out. Code and tests remain the reference.
+
+### subagents
+
+- **Child runtime.** Each child is an independent Pi RPC session launched with Node and the SDK
+  of the parent's own Pi installation. Its bootstrap goes through IPC; stdin and stdout are
+  reserved for JSONL RPC, and stderr is bounded to 64 KiB. RPC acceptance is told apart from
+  actual completion (`agent_settled`).
+- **Inherited capabilities.** A versioned snapshot reproduces the parent's model, reasoning,
+  active tools with their origin, reloadable local extensions, skills, instructions and
+  operational settings. Implicit discovery is disabled, the tool allowlist is a ceiling, and a
+  required capability that cannot be reproduced blocks the launch. Authentication overrides stay
+  in the private IPC payload. Extensions keep the parent's load order, recomputed for a CLI parent
+  from its arguments and Pi's package manager (`-e` first, then settings unless
+  `--no-extensions`); when the relative priority of sources cannot be established, the launch is
+  refused rather than guessed.
+- **Runtime check.** The canonical SDK entry, its version and a SHA-256 fingerprint of the
+  manifest, of every regular file under the SDK entry's folder and of the CLI `bin` go through the
+  IPC bootstrap and are verified by the worker. The baseline is taken when the extension loads and
+  checked again before launch and readiness, so a Pi updated in place refuses new children until
+  restart. The cache is invalidated by inode, size and nanosecond mtime/ctime. The CLI bundle's
+  virtual SDK exports differ from `dist/index.js`; the host package is bound to the effective Pi
+  executable before any SDK import, and a retargeted launcher requires a restart.
+- **Dialogs.** Confirmations, selections and simple inputs requested by a child's extensions are
+  relayed to the parent in TUI and RPC with a bounded wait. The multiline editor is refused in
+  RPC: its contract cannot close an unanswered request.
+- **Cleanup failures.** If two cleanup attempts fail on shutdown, the process registry and
+  manager stay available for retries at the next session start or shutdown in the same Pi
+  process. If cleanup still fails at startup, the extension refuses to restore or accept
+  missions. A detached guardian stops a worker's tree if the parent disappears, and a worker that
+  exits sends TERM to its descendants and leaves a one-shot watchdog to KILL whatever outlives it.
+- **Display.** The parent's history keeps only the ten latest runs. Success notifications for a
+  response the parent already read are hidden in the TUI but still sent to the model. Costs are
+  rounded to three significant digits for display only; missing measurements are shown as
+  unavailable, never estimated.
+
+### session-compaction
+
+- **Storage.** Notes are immutable random revisions written with exclusive creation without
+  following links, mode 0600, fsync and atomic rename, in a 0700 folder that cannot be a symbolic
+  link nor sit inside the workspace. Reads check root identity, a regular single-link file,
+  owner, permissions and bounded size, and open non-blocking so a swapped-in FIFO cannot hang
+  them. Cleanup validates every entry first, deletes only known regular files (`owner.json` last)
+  and never recursively. Orphan collection requires the exact prefix, a private marker with
+  matching pid and uid, and an owner for which `kill(pid, 0)` reports `ESRCH`; anything ambiguous
+  stays on disk. Node's portable APIs lack `openat`/`unlinkat`, so a hostile concurrent change by
+  the same OS user cannot be fully ruled out.
+- **Branches.** Snapshots reference immutable revisions and are rebuilt with `getBranch()`.
+  `/reload` keeps the files through a process-local symbol registry.
+- **Pi APIs** (checked against SDK 0.99.2). Effective settings come from `pi.getSettings()` and
+  `SettingsManager.inMemory(snapshot).getCompactionSettings(ctx.model)`, which applies provider
+  and model overrides without disk I/O. Pi's threshold is `tokens > contextWindow -
+  reserveTokens`. `session_compact` returns `terminate: true`; `agent_before_settle` then calls
+  `ctx.compact` without awaiting it, since manual compaction aborts and waits for idle.
+  `onComplete` resumes through a follow-up message with `triggerTurn: true`. Session identity,
+  branch generation and a single-callback guard prevent stale or double continuations;
+  `session_compact_failed.aborted` takes precedence over the error text. When an automatic
+  compaction satisfies a pending voluntary request, the resume is added at `agent_before_settle`
+  with `continue: true`, and a new `turn_start` cancels that obligation.
+
+### code-intelligence
+
+LSP pushes diagnostics without an end-of-analysis signal. `diagnostics` briefly adds a sentinel
+to the LSP buffer (never to the file on disk) whose signature encodes a monotonic generation over
+several positions. A versioned notification must match the buffer version; an unversioned one must
+contain the whole signature, so a late publication from an earlier call cannot validate the next.
+Sentinel errors are removed and real positions restored. The sentinel goes after shebangs,
+`@ts-check`/`@ts-nocheck`/triple-slash directives and the directive prologue (found from
+TypeScript's syntax tree), before JSDoc attached to code; declaration files use a duplicated
+modifier signature that does not hide TS1036/TS1039. The buffer is restored even after a timeout
+or cancellation, and operations on one server are serialized.
+
+### web
+
+`web_fetch` checks every DNS address and pins the chosen one for the connection; each redirect
+goes through the same checks. Responses compressed despite `Accept-Encoding: identity` are
+refused, and no environment proxy is used. Remote error bodies and raw network errors are never
+exposed. JSON is returned as text, without reformatting, to keep large numeric IDs intact. The
+Brave key is only sent to `api.search.brave.com`, and search redirects are refused. Context7 goes
+through the pinned `@upstash/context7-sdk` 0.4.1.

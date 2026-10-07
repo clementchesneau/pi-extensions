@@ -26,7 +26,8 @@
   "pi": {
     "extensions": [
       "./index.js"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/clementchesneau/pi-extensions/main/docs/images/ask-user.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-tui": "*",

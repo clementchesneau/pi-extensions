@@ -29,7 +29,8 @@
     ],
     "themes": [
       "./themes/graphite.json"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/clementchesneau/pi-extensions/main/docs/images/graphite.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

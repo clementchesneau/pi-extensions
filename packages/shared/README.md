@@ -1,18 +1,16 @@
 # Pi shared
 
-Code commun des extensions `@clement_chsn/pi-*`, installé automatiquement comme
-dépendance de celles qui l’utilisent. Ce n’est pas une extension Pi : il n’enregistre ni
-outil, ni commande, ni widget.
+Code shared by the `@clement_chsn/pi-*` extensions, installed automatically as a dependency of
+those that use it. It is not a Pi extension: it registers no tool, command or widget.
 
-Les modules sont importés par sous-chemin, par exemple
-`@clement_chsn/pi-shared/process-tree` :
+Modules are imported by subpath, for example `@clement_chsn/pi-shared/process-tree`:
 
-- `activity-indicator` : protocole `pi.events` entre la barre d’activité et ses producteurs ;
-- `full-page` : vue plein écran par-dessus le fil, sans images du fil en transparence ;
-- `process-tree` : lecture de `ps` et cibles de nettoyage d’un arbre de processus ;
-- `task-list` : liste de tâches groupée par section, sélection par identifiant ;
-- `terminal-text` : texte non fiable rendu sûr pour une ligne de terminal ;
-- `tool-result` : résultat d’outil dont le texte pour le modèle et les détails portent la même valeur JSON.
+- `activity-indicator`: the `pi.events` protocol between the activity bar and its producers;
+- `full-page`: a full-screen view over the conversation, without its images showing through;
+- `process-tree`: reading `ps` and computing the cleanup targets of a process tree;
+- `task-list`: a task list grouped by section, with selection by ID;
+- `terminal-text`: untrusted text made safe for a terminal line;
+- `tool-result`: a tool result whose text for the model and details carry the same JSON value.
 
-Aucune garantie de stabilité en dehors de ces extensions : chacune dépend d’une version
-exacte de ce package.
+No stability guarantee outside these extensions: each depends on an exact version of this
+package.

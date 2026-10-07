@@ -1,14 +1,31 @@
 # Activity indicator
 
-Une seule ligne TUI pour le chronomètre Graphite et les travaux actifs, alimentée par plusieurs extensions, quel que soit leur ordre de chargement. Elle n'enregistre ni outil ni commande, et ne remplace pas les vues `/subagents` et `/ps`. Sur terminal large, la durée est alignée à gauche et les compteurs à droite ; si l'espace manque, les compteurs priment et la durée est masquée plutôt que d'ajouter une ligne.
+One line above the Pi editor for the
+[Graphite](https://github.com/clementchesneau/pi-extensions/tree/main/packages/graphite-ui) run
+timer and the number of running background tasks and subagents, instead of one widget each.
 
-Contrat entre extensions via `pi.events`, version 1 (constantes et client producteur dans `@clement_chsn/pi-shared/activity-indicator`) :
+![Run timer on the left, task and subagent counters on the right](https://raw.githubusercontent.com/clementchesneau/pi-extensions/main/docs/images/graphite-running.png)
 
-- À chaque `session_start` TUI, l'indicateur vide son état puis émet `activity-indicator:ready` avec `{ protocol: 1 }`. Ce message signifie « envoyez tout votre état » : chaque producteur republie alors ses valeurs courantes. Un producteur ignore un `ready` d'une autre version et garde son widget autonome.
-- `activity-indicator:update` prend `{ source: string, label: string, count: number }`. Chaque message **remplace** le compteur de cette source ; `count: 0` retire sa contribution. `label` est le nom affiché avec le nombre (le producteur gère le singulier/pluriel). Le message ne contient ni logs ni commande.
-- `activity-indicator:timer` prend `{ text: string, active: boolean }`. Graphite publie sa durée affichable et son état (accent pendant l’exécution, gris au repos), ou `text: ''` lorsqu'il est désactivé ; la barre ne calcule pas elle-même les durées. Le widget disparaît quand il n'y a ni durée ni compteur.
-- L'indicateur vide son widget et ses compteurs à `session_shutdown`. Les producteurs doivent cesser de publier après la fermeture de leur session et envoyer `count: 0` lorsqu'ils se désactivent.
+```sh
+pi install npm:@clement_chsn/pi-activity-indicator
+```
 
-Un producteur chargé avant l'indicateur commence sur son widget autonome, puis le retire et publie dans la barre dès le premier `ready`. Charger l'indicateur en premier (comme le manifeste racine) évite ce passage. Sans indicateur, les widgets autonomes de `graphite-ui`, `subagents` et `background-tasks` continuent à fonctionner.
+The timer sits on the left and the counters on the right; on a narrow terminal, the counters win.
+It adds no tool or command. Without it, graphite-ui, subagents and background-tasks keep their own
+widgets.
 
-Pour intégrer une autre extension : `connectActivityIndicator(pi)` à l'initialisation, puis à chaque rendu publier via `update`/`timer` si `available`, sinon afficher son propre widget, et republier tout l'état dans `onReady`.
+## For extension authors
+
+The line speaks a small protocol over `pi.events`; constants and a producer client are in
+`@clement_chsn/pi-shared/activity-indicator`.
+
+| Event | Payload | Meaning |
+| --- | --- | --- |
+| `activity-indicator:ready` | `{ protocol: 1 }` | Emitted at each TUI session start: producers republish all their state |
+| `activity-indicator:update` | `{ source, label, count }` | Replaces the counter of `source`; `count: 0` removes it |
+| `activity-indicator:timer` | `{ text, active }` | Graphite's displayed duration, accented while `active`; `text: ''` hides it |
+
+Call `connectActivityIndicator(pi)` at startup. On each render, publish through `update` and
+`timer` when `available` is true, otherwise show your own widget; republish everything in
+`onReady`. Ignore a `ready` of another protocol version, stop publishing once your session is
+closed, and send `count: 0` when your extension is disabled.
