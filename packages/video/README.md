@@ -64,7 +64,8 @@ GEMINI_VIDEO_MODEL=gemini-3.5-flash-lite
 - A YouTube URL is passed to Gemini as is. Any other video, downloaded or local, is re-encoded as
   a small MP4 (H.264, 720p at most, no metadata such as location), cut exactly to `from`/`to` when
   given, uploaded through the Gemini Files API, and deleted once Gemini has answered, even if you
-  press Esc. If the deletion fails, the answer says so; Gemini deletes uploads after 48 hours
+  press Esc or the upload fails midway. If the deletion fails, the answer, error or cancellation
+  says so; Gemini deletes uploads after 48 hours
   anyway. For an uploaded part, Gemini's times start at the part. Re-encoding needs an ffmpeg
   built with libx264, as Homebrew's is.
 - Videos over 200 MB need `from`/`to`: only that part is cut and sent.

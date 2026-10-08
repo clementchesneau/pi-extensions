@@ -332,3 +332,92 @@ test('the processing time limit also stops a status request that hangs', async t
   assert.ok(Date.now() - started < 2000);
   assert.equal(api.requests.at(-1).method, 'DELETE');
 });
+
+test('the lost upload is searched for on every page of the file list', async t => {
+  const controller = new AbortController();
+  let stored;
+  const api = gemini({
+    ...uploadRoutes('far', 'p'),
+    [`GET ${API}/v1beta/files?pageSize=100`]: () =>
+      json({ files: [{ name: 'files/a', displayName: 'a' }], nextPageToken: 't2' }),
+    [`GET ${API}/v1beta/files?pageSize=100&pageToken=t2`]: () =>
+      json({ files: [{ name: 'files/far', displayName: stored }] }),
+    [`DELETE ${API}/v1beta/files/far`]: () => json({}),
+  });
+  const fetch = async (url, init = {}) => {
+    const response = await api.fetch(url, init);
+    if (url.endsWith('/upload/session/p')) {
+      stored = api.requests[0].body.file.display_name;
+      controller.abort();
+      throw controller.signal.reason;
+    }
+    return response;
+  };
+  const { tools, directory } = await localVideo(t, fetch);
+  await assert.rejects(
+    tools.video_ask.execute('1', { source: 'clip.mp4', question: 'Q' }, controller.signal, undefined, {
+      cwd: directory,
+    }),
+    { name: 'AbortError' },
+  );
+  assert.deepEqual(
+    api.requests.slice(-3).map(request => `${request.method} ${request.url.replace(API, '')}`),
+    ['GET /v1beta/files?pageSize=100', 'GET /v1beta/files?pageSize=100&pageToken=t2', 'DELETE /v1beta/files/far'],
+  );
+});
+
+test('a failed upload whose stored copy cannot be found or deleted says so', async t => {
+  let stored;
+  const api = gemini({
+    [`POST ${API}/upload/v1beta/files`]: () =>
+      json({}, { headers: { 'x-goog-upload-url': `${API}/upload/session/f` } }),
+    [`POST ${API}/upload/session/f`]: () => {
+      stored = api.requests[0].body.file.display_name;
+      return json({ error: { message: 'finalize failed' } }, { status: 503 });
+    },
+    [`GET ${API}/v1beta/files?pageSize=100`]: () => json({ files: [{ name: 'files/f', displayName: stored }] }),
+    [`DELETE ${API}/v1beta/files/f`]: () => json({ error: { message: 'busy' } }, { status: 500 }),
+  });
+  const { tools, directory } = await localVideo(t, api.fetch);
+  await assert.rejects(
+    tools.video_ask.execute('1', { source: 'clip.mp4', question: 'Q' }, undefined, undefined, { cwd: directory }),
+    /HTTP 503.*finalize failed.*could not be deleted from Gemini.*HTTP 500.*busy.*48 hours/s,
+  );
+  const listing = gemini({
+    ...uploadRoutes('x', 'x'),
+    [`GET ${API}/v1beta/files?pageSize=100`]: () => json({ error: { message: 'list down' } }, { status: 502 }),
+  });
+  const failing = async (url, init) => {
+    if (url.endsWith('/upload/session/x')) throw new TypeError('fetch failed');
+    return listing.fetch(url, init);
+  };
+  const second = await localVideo(t, failing);
+  await assert.rejects(
+    second.tools.video_ask.execute('2', { source: 'clip.mp4', question: 'Q' }, undefined, undefined, {
+      cwd: second.directory,
+    }),
+    /fetch failed.*could not be deleted from Gemini.*HTTP 502.*list down/s,
+  );
+});
+
+test('after Esc, a failed deletion is still reported in the cancellation', async t => {
+  const controller = new AbortController();
+  const api = gemini({
+    ...uploadRoutes('stuck', 's2'),
+    [`DELETE ${API}/v1beta/files/stuck`]: () => json({ error: { message: 'denied' } }, { status: 403 }),
+  });
+  const fetch = async (url, init = {}) => {
+    if (url.includes(':generateContent')) {
+      controller.abort();
+      throw controller.signal.reason;
+    }
+    return api.fetch(url, init);
+  };
+  const { tools, directory } = await localVideo(t, fetch);
+  await assert.rejects(
+    tools.video_ask.execute('1', { source: 'clip.mp4', question: 'Q' }, controller.signal, undefined, {
+      cwd: directory,
+    }),
+    error => error.name === 'AbortError' && /could not be deleted from Gemini.*HTTP 403.*denied/s.test(error.message),
+  );
+});

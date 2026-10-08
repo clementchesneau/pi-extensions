@@ -95,17 +95,36 @@ async function remove(client, name) {
 
 /**
  * Deletes the upload with this display name, for an upload whose answer was lost: the file may
- * exist on Google's side without this extension knowing its name.
+ * exist on Google's side without this extension knowing its name. Searches every page of the
+ * list; returns the failure, if any.
  */
 async function removeByDisplayName(client, displayName) {
   const signal = AbortSignal.timeout(DELETE_LIMIT_MS);
-  const listed = await (await call(client, `${API}/v1beta/files?pageSize=100`, {}, signal)).json();
-  const file = (listed.files ?? []).find(candidate => candidate.displayName === displayName);
-  if (file) await remove(client, file.name);
+  try {
+    let pageToken;
+    do {
+      const query = new URLSearchParams({ pageSize: '100', ...(pageToken ? { pageToken } : {}) });
+      const listed = await (await call(client, `${API}/v1beta/files?${query}`, {}, signal)).json();
+      const file = (listed.files ?? []).find(candidate => candidate.displayName === displayName);
+      if (file) return await remove(client, file.name);
+      pageToken = listed.nextPageToken;
+    } while (pageToken);
+    return undefined;
+  } catch (error) {
+    return error;
+  }
 }
 
 const deletionWarning = error =>
   `Warning: the uploaded video could not be deleted from Gemini (${error.message}); Gemini deletes uploads after 48 hours.`;
+
+/** The failure, with the deletion problem in its message; a cancellation stays a cancellation. */
+function withDeletionWarning(failure, undeleted) {
+  if (!undeleted) return failure;
+  const message = `${failure?.message ?? failure} ${deletionWarning(undeleted)}`;
+  if (failure?.name === 'AbortError') return new DOMException(message, 'AbortError');
+  return new Error(message, { cause: failure });
+}
 
 async function generate(client, model, parts) {
   const response = await call(client, `${API}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -155,8 +174,7 @@ async function uploadedAnswer(client, job) {
   try {
     file = await upload(client, { path, size, displayName });
   } catch (error) {
-    await removeByDisplayName(client, displayName).catch(() => undefined);
-    throw error;
+    throw withDeletionWarning(error, await removeByDisplayName(client, displayName));
   }
   let answer;
   let failure;
@@ -173,10 +191,7 @@ async function uploadedAnswer(client, job) {
   }
   // Do not keep the video on Google's side longer than the question needs, even after Esc.
   const undeleted = await remove(client, file.name);
-  if (failure) {
-    if (!undeleted || client.signal?.aborted) throw failure;
-    throw new Error(`${failure.message} ${deletionWarning(undeleted)}`, { cause: failure });
-  }
+  if (failure) throw withDeletionWarning(failure, undeleted);
   return { answer, warning: undeleted && deletionWarning(undeleted) };
 }
 
