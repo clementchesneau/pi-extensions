@@ -18,15 +18,16 @@ function registeredTools(extension) {
   extension(fake.pi);
   return [...fake.tools.values()];
 }
-const tools = [
-  createCodeNavTool(),
-  ...createWebTools(),
-  ...createBrowserTools().tools,
-  ...createSubagentTools({ getManager: () => ({}) }),
-  ...registeredTools(backgroundTasks),
-  ...registeredTools(askUser),
-  ...registeredTools(sessionCompaction),
-];
+const toolsByExtension = {
+  'code-intelligence': [createCodeNavTool()],
+  web: createWebTools(),
+  'ui-check': createBrowserTools().tools,
+  subagents: createSubagentTools({ getManager: () => ({}) }),
+  'background-tasks': registeredTools(backgroundTasks),
+  'ask-user': registeredTools(askUser),
+  'session-compaction': registeredTools(sessionCompaction),
+};
+const tools = Object.values(toolsByExtension).flat();
 function sections(selected = tools) {
   return buildSystemPromptSections({
     cwd: process.cwd(),
@@ -77,4 +78,34 @@ test('all model tools have concise snippets and appear once in the assembled too
     assert.ok(tool.promptSnippet.length <= 180, `${tool.name}: snippet is too long`);
     assert.equal(prompt.tools.split('\n').filter(line => line.startsWith(`- ${tool.name}:`)).length, 1);
   }
+});
+
+test('no tool text names a tool of another extension, so each extension reads the same alone or together', () => {
+  const crossReferences = [];
+  for (const [extension, own] of Object.entries(toolsByExtension)) {
+    const foreign = tools.filter(tool => !own.includes(tool));
+    for (const tool of own) {
+      const text = [tool.description, tool.promptSnippet, ...(tool.promptGuidelines ?? [])].join(' ');
+      for (const other of foreign) {
+        if (new RegExp(`\\b${other.name}\\b`).test(text))
+          crossReferences.push(`${extension}/${tool.name} -> ${other.name}`);
+      }
+    }
+  }
+  assert.deepEqual(crossReferences, []);
+});
+
+test('browser_open tells the agent it can read pages whose content needs JavaScript', () => {
+  const open = toolsByExtension['ui-check'].find(tool => tool.name === 'browser_open');
+  assert.ok(open.promptGuidelines.some(text => /browser_open.*JavaScript/.test(text)));
+});
+
+test('web_fetch describes PDF, image and GitHub reading with their limits', () => {
+  const fetch = toolsByExtension.web.find(tool => tool.name === 'web_fetch');
+  assert.match(fetch.description, /PDF text.*no OCR/);
+  assert.match(fetch.description, /PNG, JPEG, GIF and WebP images.*model accepts images/);
+  assert.match(fetch.description, /GitHub repository, directory, file, issue and pull request URLs/);
+  assert.match(fetch.description, /20 MiB for PDFs/);
+  assert.doesNotMatch(fetch.description, /no JavaScript, login, PDF/);
+  assert.match(fetch.promptSnippet, /PDF.*image.*GitHub/);
 });

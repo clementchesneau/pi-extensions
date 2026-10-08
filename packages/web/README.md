@@ -1,7 +1,7 @@
 # Web
 
-Web tools for the agent, independent of your AI provider: Brave search, page reading as
-Markdown, and versioned library documentation from Context7.
+Web tools for the agent, independent of your AI provider: Brave search, reading of pages, PDFs,
+images and GitHub URLs, and versioned library documentation from Context7.
 
 ```sh
 pi install npm:@clement_chsn/pi-web
@@ -10,7 +10,7 @@ pi install npm:@clement_chsn/pi-web
 | Tool | Purpose | Key |
 | --- | --- | --- |
 | `web_search` | Search the web with Brave: titles, URLs, snippets | `BRAVE_API_KEY` |
-| `web_fetch` | Read a public page as Markdown (HTML, text, Markdown, JSON) | None |
+| `web_fetch` | Read a public URL: page as Markdown (HTML, text, Markdown, JSON), PDF text, image, or GitHub repository, directory, file, issue or pull request | None |
 | `context7_resolve` | Find a library's Context7 ID and its indexed versions | `CONTEXT7_API_KEY` |
 | `context7_docs` | Read documentation excerpts with their sources | `CONTEXT7_API_KEY` |
 
@@ -42,9 +42,23 @@ same name take precedence, even when empty. Only this file is read, never a proj
 
 - **Brave and Context7: one request per call**, with no automatic retry, prefetching or cache, so
   a Context7 resolve followed by a read costs two calls of your quota.
-- **`web_fetch`** reads public HTTP(S) pages only: no localhost or private network, no login or
-  cookies, no PDF, and no JavaScript execution, so a page that needs it may come back empty or
-  partial. It allows 4 redirects, 4 MiB and 20 seconds per page.
+- **`web_fetch`** reads public HTTP(S) URLs only: no localhost or private network, no login or
+  cookies, and no JavaScript execution, so a page that needs it may come back empty or partial.
+  It allows 4 redirects, 20 seconds and 4 MiB per URL, 20 MiB for a PDF.
+- **PDF**: the text is extracted locally with unpdf and marked by page, in a worker thread limited
+  to 20 seconds and 512 MB of heap that stops when the call is cancelled. There is no OCR: a
+  scanned PDF, or one whose fonts cannot be decoded, is reported as having no text, and a
+  password-protected PDF is refused.
+- **Images**: PNG, JPEG, GIF and WebP reach the model as images when the current model accepts
+  them; Pi resizes them before sending. The format comes from the file's signature, not the
+  declared type, and other formats are refused.
+- **GitHub**: a repository gives its README and root files (a `github.com` path that is not a
+  repository, such as an advisory, is read as an ordinary page), a `tree` URL lists that directory, a
+  `blob` URL reads the raw file, and an issue or pull request gives its description and first 100
+  comments, without inline review comments. GitHub's API allows 60 requests per hour without a
+  token: a repository costs 2, an issue or pull request 1 or 2. Private repositories, and branch
+  names containing `/` in `tree` URLs, are not supported: the agent is told to use `gh` or `git`
+  through the shell instead.
 - **Long results** are cut at 24,000 bytes or 600 lines. The full text is saved in a private
   temporary file (`pi-web-*/source.txt`) the agent can read; delete these files when you no longer
   need them.

@@ -18,7 +18,7 @@ with the models you choose, none of them calls a second model or depends on your
 | [subagents](packages/subagents/README.md) | Delegates missions to child Pi sessions working in parallel; `/subagents` follows them live | macOS or Linux with procps `ps`; extra model calls |
 | [background-tasks](packages/background-tasks/README.md) | Runs non-interactive shell commands in the background, tracked by ID; `/ps` shows them with live logs | macOS or Linux with procps `ps` |
 | [ask-user](packages/ask-user/README.md) | Lets the agent ask you questions: single or multiple choice, free text, and a summary before sending | Interactive terminal |
-| [web](packages/web/README.md) | Brave web search, page reading as Markdown, and versioned library docs from Context7 | Brave and/or Context7 API key for search and docs |
+| [web](packages/web/README.md) | Brave web search, reading of pages, PDFs, images and GitHub URLs, and versioned library docs from Context7 | Brave and/or Context7 API key for search and docs |
 | [ui-check](packages/ui-check/README.md) | Headless Chromium the agent opens on demand to use a web UI, take screenshots and read console errors | Chromium installed through Playwright |
 | [code-intelligence](packages/code-intelligence/README.md) | TypeScript and JavaScript navigation: symbols, definition, references, hover, diagnostics | Nothing; the language server ships with it |
 | [session-compaction](packages/session-compaction/README.md) | Lets the agent compact its context from 60% usage, keeping notes it can reread afterwards | Nothing |

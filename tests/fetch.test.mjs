@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fetchPage } from '../packages/web/fetch.js';
+import { minimalPdf } from './fixtures/minimal-pdf.mjs';
 
 test('extracts HTML locally, resolves links against final URL and drops active content', async () => {
   const page = await fetchPage(
@@ -76,7 +77,133 @@ test('reports HTTP errors without guessing authentication or exposing upstream b
   }
 });
 
-test('accepts plain text and Markdown but rejects PDFs, failed and empty pages', async () => {
+const pdfResponse = (bytes, contentType = 'application/pdf') => ({
+  url: 'https://example.com/report.pdf',
+  status: 200,
+  headers: { 'content-type': contentType },
+  body: '',
+  bytes,
+});
+
+test('extracts PDF text locally with page markers and the document title', async () => {
+  const bytes = minimalPdf(['Quarterly results', 'Second page text'], { title: 'Annual Report' });
+  const page = await fetchPage({ url: 'https://example.com/report.pdf' }, { request: async () => pdfResponse(bytes) });
+  assert.equal(page.url, 'https://example.com/report.pdf');
+  assert.equal(page.title, 'Annual Report');
+  assert.equal(page.extraction, 'pdf');
+  assert.match(page.markdown, /\[Page 1 of 2\]\nQuarterly results\n\n\[Page 2 of 2\]\nSecond page text/);
+});
+
+test('asks for PDFs and allows them 20 MiB while other pages keep the 4 MiB limit', async () => {
+  let options;
+  await fetchPage(
+    { url: 'https://example.com/report.pdf' },
+    {
+      request: async (_url, requestOptions) => {
+        options = requestOptions;
+        return pdfResponse(minimalPdf(['Limits']));
+      },
+    },
+  );
+  assert.ok(options.headers.Accept.includes('application/pdf'));
+  assert.equal(options.maxBytes({ 'content-type': 'application/pdf' }), 20 * 1024 * 1024);
+  assert.equal(options.maxBytes({ 'content-type': 'application/octet-stream' }), 20 * 1024 * 1024);
+  assert.equal(options.maxBytes({ 'content-type': 'text/html; charset=utf-8' }), 4 * 1024 * 1024);
+  assert.equal(options.maxBytes({}), 4 * 1024 * 1024);
+});
+
+test('reads PDFs served as generic binary content by their signature only', async () => {
+  const bytes = minimalPdf(['Served as octet stream']);
+  const page = await fetchPage(
+    { url: 'https://example.com/download' },
+    { request: async () => pdfResponse(bytes, 'application/octet-stream') },
+  );
+  assert.match(page.markdown, /Served as octet stream/);
+  assert.equal(page.title, 'https://example.com/report.pdf');
+  await assert.rejects(
+    fetchPage(
+      { url: 'https://example.com/download' },
+      { request: async () => pdfResponse(Buffer.from('MZ binary'), 'application/octet-stream') },
+    ),
+    /Unsupported page content type: application\/octet-stream/,
+  );
+});
+
+test('reports a PDF without extractable text as possibly scanned, since OCR is not supported', async () => {
+  await assert.rejects(
+    fetchPage({ url: 'https://example.com/scan.pdf' }, { request: async () => pdfResponse(minimalPdf(['', ''])) }),
+    /no extractable text.*scanned.*OCR is not supported/i,
+  );
+  await assert.rejects(
+    fetchPage(
+      { url: 'https://example.com/broken.pdf' },
+      { request: async () => pdfResponse(Buffer.from('%PDF-1.4 x')) },
+    ),
+    /Cannot read this PDF/,
+  );
+});
+
+const IMAGES = {
+  'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]),
+  'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]),
+  'image/gif': Buffer.from('GIF89a\x01\x00', 'latin1'),
+  'image/webp': Buffer.concat([Buffer.from('RIFF'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBPVP8 ')]),
+};
+const imageResponse = (contentType, bytes) => async (_url, requestOptions) => ({
+  url: 'https://example.com/diagram',
+  status: 200,
+  headers: { 'content-type': contentType },
+  body: '',
+  bytes,
+  requestOptions,
+});
+
+test('returns PNG, JPEG, GIF and WebP images for the model within the page size limit', async () => {
+  for (const [mimeType, bytes] of Object.entries(IMAGES)) {
+    let options;
+    const respond = imageResponse(mimeType, bytes);
+    const page = await fetchPage(
+      { url: 'https://example.com/diagram' },
+      { request: async (url, requestOptions) => ((options = requestOptions), respond(url, requestOptions)) },
+    );
+    assert.equal(page.url, 'https://example.com/diagram');
+    assert.equal(page.extraction, 'image');
+    assert.deepEqual(page.image, { data: bytes.toString('base64'), mimeType });
+    assert.ok(options.headers.Accept.includes(mimeType));
+    assert.equal(options.maxBytes({ 'content-type': mimeType }), 4 * 1024 * 1024);
+  }
+});
+
+test('the image type sent to the model comes from the file signature, not the declared type', async () => {
+  const png = await fetchPage(
+    { url: 'https://example.com/a' },
+    { request: imageResponse('image/jpeg', IMAGES['image/png']) },
+  );
+  assert.equal(png.image.mimeType, 'image/png');
+  const jpg = await fetchPage(
+    { url: 'https://example.com/b' },
+    { request: imageResponse('image/jpg', IMAGES['image/jpeg']) },
+  );
+  assert.equal(jpg.image.mimeType, 'image/jpeg');
+  for (const [contentType, bytes] of [
+    ['image/png', Buffer.from('<!doctype html><title>Not found</title>')],
+    ['image/webp', Buffer.alloc(0)],
+  ]) {
+    await assert.rejects(
+      fetchPage({ url: 'https://example.com/c' }, { request: imageResponse(contentType, bytes) }),
+      new RegExp(`declared as ${contentType.replace('/', '\\/')} but is not a PNG, JPEG, GIF or WebP image`),
+    );
+  }
+  await assert.rejects(
+    fetchPage(
+      { url: 'https://example.com/logo.svg' },
+      { request: imageResponse('image/svg+xml', Buffer.from('<svg/>')) },
+    ),
+    /Unsupported image type: image\/svg\+xml.*PNG, JPEG, GIF and WebP/,
+  );
+});
+
+test('accepts plain text and Markdown but rejects failed and empty pages', async () => {
   for (const contentType of ['text/plain', 'text/markdown']) {
     const page = await fetchPage(
       { url: 'https://example.com/readme' },
@@ -93,7 +220,7 @@ test('accepts plain text and Markdown but rejects PDFs, failed and empty pages',
   }
   for (const response of [
     { status: 403, body: 'secret upstream error' },
-    { status: 200, headers: { 'content-type': 'application/pdf' }, body: '%PDF' },
+    { status: 200, headers: { 'content-type': 'application/zip' }, body: '', bytes: Buffer.from('PK') },
     {
       status: 200,
       headers: { 'content-type': 'text/html' },

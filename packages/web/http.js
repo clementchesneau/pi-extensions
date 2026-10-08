@@ -35,8 +35,45 @@ function abortable(promise, signal) {
   });
 }
 
+const BINARY_TYPES = /^(?:image\/|application\/(?:pdf|x-pdf|octet-stream)$|binary\/octet-stream$)/;
+
+/** Text of a textual body in its declared charset; binary types (images, PDF, octet-stream) have none. */
+function decodedBody(bytes, headers) {
+  const contentType = String(headers['content-type'] ?? '');
+  if (BINARY_TYPES.test(contentType.split(';')[0].trim().toLowerCase())) return '';
+  const charset = /charset\s*=\s*["']?([^;\s"']+)/i.exec(contentType)?.[1] ?? 'utf-8';
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch {
+    throw new Error('Unsupported page character encoding.');
+  }
+}
+
+function collectBody(response, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let bytes = 0;
+    response.on('data', chunk => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        response.destroy(new Error('Response exceeds the download size limit.'));
+      } else chunks.push(chunk);
+    });
+    response.on('error', reject);
+    response.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
 // Internal transport boundary: callers must use publicGet, which validates and
 // pins DNS. Exported for integration tests against a local HTTP fixture only.
+/**
+ * @param {URL} url
+ * @param {{ address: { address: string, family: number }, headers?: Record<string, string>, signal?: AbortSignal,
+ *   maxBytes: number | ((headers: import('node:http').IncomingHttpHeaders) => number) }} options
+ *   `maxBytes` may depend on the response headers, for example a larger limit for PDFs.
+ * @returns {Promise<{ status: number, headers: import('node:http').IncomingHttpHeaders, body: string, bytes?: Buffer }>}
+ *   `bytes` is the raw body of a successful response; `body` is its decoded text, empty for binary types.
+ */
 export function requestPinned(url, { address, headers = {}, signal, maxBytes }) {
   return new Promise((resolve, reject) => {
     const request = (url.protocol === 'https:' ? https : http).get(
@@ -64,29 +101,17 @@ export function requestPinned(url, { address, headers = {}, signal, maxBytes }) 
           reject(new Error('Unsupported compressed Content-Encoding; expected identity.'));
           return;
         }
-        if (Number(response.headers['content-length']) > maxBytes) {
+        const limit = typeof maxBytes === 'function' ? maxBytes(responseHeaders) : maxBytes;
+        if (Number(response.headers['content-length']) > limit) {
           response.destroy();
           reject(new Error('Response exceeds the download size limit.'));
           return;
         }
-        const chunks = [];
-        let bytes = 0;
-        response.on('data', chunk => {
-          bytes += chunk.length;
-          if (bytes > maxBytes) {
-            response.destroy(new Error('Response exceeds the download size limit.'));
-          } else chunks.push(chunk);
-        });
-        response.on('error', reject);
-        response.on('end', () => {
-          const charset =
-            /charset\s*=\s*["']?([^;\s"']+)/i.exec(String(responseHeaders['content-type'] ?? ''))?.[1] ?? 'utf-8';
-          try {
-            resolve({ status, headers: responseHeaders, body: new TextDecoder(charset).decode(Buffer.concat(chunks)) });
-          } catch {
-            reject(new Error('Unsupported page character encoding.'));
-          }
-        });
+        collectBody(response, limit)
+          .then(bytes =>
+            resolve({ status, headers: responseHeaders, body: decodedBody(bytes, responseHeaders), bytes }),
+          )
+          .catch(reject);
       },
     );
     request.on('error', reject);

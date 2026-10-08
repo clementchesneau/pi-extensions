@@ -146,6 +146,46 @@ test('real HTTP transport enforces byte limits, rejects compression and supports
   assert.equal(result.body.length, 100);
 });
 
+test('real HTTP transport keeps binary bodies as bytes and sizes its limit by content type', async t => {
+  const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x00, 0xfe]);
+  const server = createServer((req, res) => {
+    if (req.url === '/doc.pdf') {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.end(pdf);
+    } else if (req.url === '/large.pdf') {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.end(Buffer.alloc(80));
+    } else if (req.url === '/unknown-charset') {
+      res.setHeader('Content-Type', 'text/html; charset=x-unknown');
+      res.end('text');
+    } else {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end('é'.repeat(40));
+    }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://pinning-test.invalid:${server.address().port}`;
+  const address = { address: '127.0.0.1', family: 4 };
+  const maxBytes = headers => (headers['content-type'] === 'application/pdf' ? 100 : 50);
+
+  const document = await requestPinned(new URL(`${base}/doc.pdf`), { address, maxBytes });
+  assert.deepEqual(document.bytes, pdf);
+  assert.equal(document.body, '');
+  assert.equal((await requestPinned(new URL(`${base}/large.pdf`), { address, maxBytes })).bytes.length, 80);
+  await assert.rejects(requestPinned(new URL(`${base}/page`), { address, maxBytes }), /size limit/);
+  const page = await requestPinned(new URL(`${base}/page`), { address, maxBytes: 100 });
+  assert.equal(page.body, 'é'.repeat(40));
+  assert.equal(page.bytes.length, 80);
+  await assert.rejects(
+    requestPinned(new URL(`${base}/unknown-charset`), { address, maxBytes: 100 }),
+    /Unsupported page character encoding/,
+  );
+});
+
 test('follows relative public redirects and rejects HTTPS downgrades', async () => {
   let calls = 0;
   const result = await publicGet(

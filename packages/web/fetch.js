@@ -1,10 +1,18 @@
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import TurndownService from 'turndown';
+import { fetchGitHub, githubTarget } from './github.js';
 import { publicGet } from './http.js';
+import { IMAGE_TYPES, imagePage } from './image.js';
+import { hasPdfSignature, pdfPage } from './pdf.js';
 import { publicResultUrl } from './search.js';
 
 const TEXT_TYPES = ['text/plain', 'text/markdown', 'text/x-markdown'];
+const PDF_TYPES = ['application/pdf', 'application/x-pdf'];
+// S3 serves files without a declared type as binary/octet-stream.
+const BINARY_TYPES = ['application/octet-stream', 'binary/octet-stream'];
+const PAGE_LIMIT = 4 * 1024 * 1024;
+const DOCUMENT_LIMIT = 20 * 1024 * 1024;
 
 const mediaType = headers =>
   String(headers['content-type'] ?? '')
@@ -44,7 +52,7 @@ function htmlPage(body, finalUrl) {
   return { title, extraction, markdown };
 }
 
-function readablePage(response, type) {
+async function readablePage(response, type, signal) {
   const finalUrl = response.url;
   const isJson = type === 'application/json' || /^application\/[\w.+-]+\+json$/.test(type);
   if (isJson || TEXT_TYPES.includes(type)) {
@@ -52,9 +60,24 @@ function readablePage(response, type) {
     return { title: finalUrl, extraction: 'text', markdown: isJson ? response.body : response.body.trim() };
   }
   if (type === 'text/html') return htmlPage(response.body, finalUrl);
+  if (type.startsWith('image/')) return imagePage(response.bytes, type, finalUrl);
+  // Servers often send PDFs as generic binary content; only the file signature is trusted then.
+  if (PDF_TYPES.includes(type) || (BINARY_TYPES.includes(type) && hasPdfSignature(response.bytes))) {
+    return pdfPage(response.bytes, finalUrl, { signal });
+  }
   throw new Error(
-    `Unsupported page content type: ${type || 'missing'}. Supports HTML, plain text, Markdown and JSON, not PDF or browser rendering.`,
+    `Unsupported page content type: ${type || 'missing'}. Supports HTML, plain text, Markdown, JSON, PDF and images, not browser rendering.`,
   );
+}
+
+function pageError(status, github) {
+  let hint = '';
+  if (status === 415) hint = ' Unsupported Media Type: the server may reject the request headers (such as Accept).';
+  else if (status === 404 && github) {
+    hint =
+      ' This GitHub content does not exist or is private; for a private repository, use the GitHub CLI (gh) through the shell if it is available.';
+  }
+  return new Error(`Page request failed (HTTP ${status}).${hint}`);
 }
 
 /**
@@ -62,20 +85,26 @@ function readablePage(response, type) {
  * @param {{ signal?: AbortSignal, request?: typeof publicGet }} [options]
  */
 export async function fetchPage({ url }, { signal, request = publicGet } = {}) {
-  const response = await request(url, {
-    signal,
-    headers: { Accept: 'text/html, text/plain, text/markdown, application/json' },
-  });
-  if (response.status !== 200) {
-    const hint =
-      response.status === 415
-        ? ' Unsupported Media Type: the server may reject the request headers (such as Accept).'
-        : '';
-    throw new Error(`Page request failed (HTTP ${response.status}).${hint}`);
+  const github = githubTarget(url);
+  if (github && github.type !== 'file') {
+    const page = await fetchGitHub(github, { signal, request });
+    if (page) return page;
   }
+  const response = await request(github?.type === 'file' ? github.rawUrl : url, {
+    signal,
+    headers: {
+      Accept: `text/html, text/plain, text/markdown, application/json, application/pdf, ${IMAGE_TYPES.join(', ')}`,
+    },
+    maxBytes: headers => {
+      const type = mediaType(headers);
+      return PDF_TYPES.includes(type) || BINARY_TYPES.includes(type) ? DOCUMENT_LIMIT : PAGE_LIMIT;
+    },
+  });
+  if (response.status !== 200) throw pageError(response.status, github);
   signal?.throwIfAborted();
-  const { title, extraction, markdown } = readablePage(response, mediaType(response.headers));
+  const { title, extraction, markdown, image } = await readablePage(response, mediaType(response.headers), signal);
   signal?.throwIfAborted();
+  if (image) return { url: response.url, title, extraction, markdown, image };
   if (!markdown) throw new Error('No readable content found. The page may require JavaScript or authentication.');
   return { url: response.url, title, extraction, markdown };
 }

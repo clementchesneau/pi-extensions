@@ -28,6 +28,12 @@ Elements are targeted by accessible role and name, for example
 clicking the first match. The agent starts your dev server itself with the project's commands:
 the extension only opens the URL it is given.
 
+The snapshot also lets the agent read a public page whose content only appears once JavaScript
+runs. It is taken when the document loads, so the agent inspects the page again when its data
+arrives later. Such a page runs its own JavaScript in the isolated browser: Chromium blocks
+its requests to localhost and private networks, but the page can still navigate the browser to a
+local address, which sends one GET request there, as it could in your own browser.
+
 Using the browser is up to the agent: no hook forces a check, and an observation is not a
 verdict that the UI matches your request.
 

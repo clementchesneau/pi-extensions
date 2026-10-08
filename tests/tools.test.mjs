@@ -165,6 +165,25 @@ test('caps a single long Unicode line without splitting characters', async t => 
   assert.ok((await readFile(result.details.fullOutputPath, 'utf8')).includes(markdown));
 });
 
+test('web_fetch passes images to models that accept them and refuses text-only models', async () => {
+  const url = 'https://example.com/diagram.png';
+  const image = { data: 'iVBORw==', mimeType: 'image/png' };
+  const [, fetch] = createWebTools({
+    fetch: async () => ({ url, title: url, extraction: 'image', markdown: '', image }),
+  });
+  for (const ctx of [{ model: { input: ['text', 'image'] } }, {}]) {
+    const result = await fetch.execute('1', { url }, undefined, undefined, ctx);
+    assert.match(result.content[0].text, /untrusted/i);
+    assert.match(result.content[0].text, /Source: https:\/\/example.com\/diagram.png/);
+    assert.deepEqual(result.content[1], { type: 'image', ...image });
+    assert.deepEqual(result.details, { url, extraction: 'image', mimeType: 'image/png', truncated: false });
+  }
+  await assert.rejects(
+    fetch.execute('2', { url }, undefined, undefined, { model: { input: ['text'] } }),
+    /current model does not accept images/,
+  );
+});
+
 test('does not start a cancelled tool and surfaces service failures as tool errors', async () => {
   const tools = createWebTools({
     search: () => assert.fail('must not run'),

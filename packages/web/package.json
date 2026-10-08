@@ -1,7 +1,7 @@
 {
   "name": "@clement_chsn/pi-web",
   "version": "0.1.0",
-  "description": "Brave web search, local Markdown page reading and versioned Context7 documentation for Pi.",
+  "description": "Brave web search, local reading of pages, PDFs, images and GitHub URLs, and versioned Context7 documentation for Pi.",
   "license": "MIT",
   "author": "Clément CHESNEAU",
   "repository": {
@@ -37,7 +37,8 @@
     "@upstash/context7-sdk": "0.4.1",
     "ipaddr.js": "2.5.0",
     "linkedom": "0.18.13",
-    "turndown": "7.2.4"
+    "turndown": "7.2.4",
+    "unpdf": "1.8.1"
   },
   "devDependencies": {
     "typebox": "catalog:"
