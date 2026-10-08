@@ -1,40 +1,11 @@
 import { lookup } from 'node:dns/promises';
 import http from 'node:http';
 import https from 'node:https';
-import { isIP } from 'node:net';
-import ipaddr from 'ipaddr.js';
+import { checkedUrl, publicAddresses } from '@clement_chsn/pi-shared/public-url';
+
+export { checkedUrl };
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
-
-/** The URL rules every request obeys: public HTTP(S), no credentials, no explicit port. */
-export function checkedUrl(input) {
-  const url = new URL(input);
-  if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Only public HTTP(S) URLs are supported.');
-  if (url.username || url.password) throw new Error('URL credentials are blocked.');
-  if (url.port) throw new Error('Nonstandard ports are blocked.');
-  url.hash = '';
-  return url;
-}
-
-function assertPublic(address) {
-  // process() normalizes IPv4-mapped IPv6 before classifying it. Non-unicast
-  // ranges include private, loopback, link-local, multicast and transition ranges.
-  if (!ipaddr.isValid(address)) throw new Error('Non-public network address blocked.');
-  const parsed = ipaddr.process(address);
-  const globalV6 = parsed.kind() !== 'ipv6' || parsed.match(ipaddr.parse('2000::'), 3);
-  if (parsed.range() !== 'unicast' || !globalV6) {
-    throw new Error('Non-public network address blocked.');
-  }
-}
-
-function abortable(promise, signal) {
-  signal.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(signal.reason);
-    signal.addEventListener('abort', abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
-  });
-}
 
 const BINARY_TYPES = /^(?:image\/|application\/(?:pdf|x-pdf|octet-stream)$|binary\/octet-stream$)/;
 
@@ -119,18 +90,6 @@ export function requestPinned(url, { address, headers = {}, signal, maxBytes }) 
   });
 }
 
-/** Addresses of the URL host; every one must be public, whichever the connection uses. */
-async function publicAddresses(url, resolve, signal) {
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  const family = isIP(host);
-  const addresses = family
-    ? [{ address: host, family }]
-    : await abortable(resolve(host, { all: true, verbatim: true }), signal);
-  if (!addresses.length) throw new Error('No public address found.');
-  addresses.forEach(({ address }) => assertPublic(address));
-  return addresses;
-}
-
 function redirectTarget(url, response) {
   if (!response.headers.location) throw new Error('Redirect has no destination.');
   const next = checkedUrl(new URL(response.headers.location, url));
@@ -149,7 +108,7 @@ export async function publicGet(input, options = {}, dependencies = {}) {
   const maxRedirects = options.maxRedirects ?? 4;
   for (let redirects = 0; ; redirects++) {
     signal.throwIfAborted();
-    const addresses = await publicAddresses(url, resolve, signal);
+    const addresses = await publicAddresses(url, { resolve, signal });
     signal.throwIfAborted();
     const response = await send(url, {
       address: addresses[0],

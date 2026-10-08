@@ -28,6 +28,7 @@
     "./bounded-text": "./bounded-text.js",
     "./full-page": "./full-page.js",
     "./process-tree": "./process-tree.js",
+    "./public-url": "./public-url.js",
     "./task-list": "./task-list.js",
     "./terminal-text": "./terminal-text.js",
     "./tool-result": "./tool-result.js",
@@ -38,5 +39,8 @@
   },
   "devDependencies": {
     "@earendil-works/pi-tui": "catalog:"
+  },
+  "dependencies": {
+    "ipaddr.js": "2.5.0"
   }
 }

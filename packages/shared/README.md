@@ -10,6 +10,8 @@ Modules are imported by subpath, for example `@clement_chsn/pi-shared/process-tr
   private file;
 - `full-page`: a full-screen view over the conversation, without its images showing through;
 - `process-tree`: reading `ps` and computing the cleanup targets of a process tree;
+- `public-url`: the rules an outgoing URL obeys, and the check that its host has only public
+  addresses;
 - `task-list`: a task list grouped by section, with selection by ID;
 - `terminal-text`: untrusted text made safe for a terminal line;
 - `tool-result`: a tool result whose text for the model and details carry the same JSON value;
