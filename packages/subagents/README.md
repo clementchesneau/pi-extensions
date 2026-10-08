@@ -33,9 +33,11 @@ Before you start:
 | `subagent_stop` | Stop one child |
 | `subagent_models` | Browse your model catalogue for the models available in Pi |
 
-A child starts with the parent's model, reasoning level and tools unless the mission says
-otherwise. It gets the mission and the context the parent selects, not the parent's whole
-history, and it cannot delegate in turn. Each child runs its own browser and language server
+A child starts with the parent's model and reasoning level unless the mission says otherwise.
+The parent is guided to give it the tools its mission could use rather than all of its own, for
+example no `edit` or `write` for a review; restricting tools is not a sandbox, since `bash` can
+change files too. A child gets the mission and the context the parent selects, not the parent's
+whole history, and it cannot delegate in turn. Each child runs its own browser and language server
 when it inherits ui-check or code-intelligence.
 
 Results arrive as notifications marked **unverified**. The parent keeps working, then reads the

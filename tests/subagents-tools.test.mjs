@@ -89,6 +89,15 @@ test('delegation guideline respects explicit user preferences and avoids specula
   assert.match(guideline, /available model/i);
 });
 
+test('delegation guideline chooses tools for the mission without dropping ones it could use', () => {
+  const [start] = createSubagentTools({ getManager: () => ({}) });
+  const guideline = start.promptGuidelines.join(' ');
+  assert.match(guideline, /pass the tools the mission could use.*any it might need/i);
+  assert.match(guideline, /exclude.*edit and write.*must not change files/i);
+  assert.doesNotMatch(guideline, /bash/i, 'must not push the parent to drop bash from a mission that could use it');
+  assert.match(start.parameters.properties.tools.description, /omit to inherit all/i);
+});
+
 test('tool result cards explain acceptance, waiting and retrieval without dumping model JSON', () => {
   const tools = createSubagentTools({ getManager: () => ({}) });
   const theme = { fg: (_color, text) => text };
