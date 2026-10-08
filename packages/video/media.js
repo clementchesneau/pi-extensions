@@ -33,7 +33,7 @@ export async function probe(path, signal) {
     'error',
     ...LOCAL,
     '-show_entries',
-    'format=duration,format_name:stream=codec_type',
+    'format=duration,format_name:stream=codec_type:stream_disposition=attached_pic',
     '-of',
     'json',
     path,
@@ -41,11 +41,14 @@ export async function probe(path, signal) {
   const result = await runProgram('ffprobe', args, { signal });
   if (result.code !== 0) throw new Error(`ffprobe cannot read ${path}: ${lastLine(result.stderr)}`);
   const data = JSON.parse(result.stdout);
-  const types = (data.streams ?? []).map(stream => stream.codec_type);
+  const streams = data.streams ?? [];
+  // A cover picture in an audio file is a video stream that is not a video.
+  const pictures = streams.filter(stream => stream.codec_type === 'video' && !stream.disposition?.attached_pic);
+  const types = streams.map(stream => stream.codec_type);
   return {
     duration: Number(data.format?.duration) || 0,
     formatName: String(data.format?.format_name ?? ''),
-    hasVideo: types.includes('video'),
+    hasVideo: pictures.length > 0,
     hasAudio: types.includes('audio'),
   };
 }
@@ -84,9 +87,14 @@ export async function extractAudio(media, span, output, signal) {
   await ffmpeg(args, signal);
 }
 
-/** Copies the span into its own file without re-encoding. */
-export async function cutClip(media, span, output, signal) {
+/**
+ * Re-encodes the span, or the whole video, as a small H.264 MP4 without metadata, for an upload.
+ * Re-encoding cuts exactly: a stream copy would keep the frames since the previous keyframe.
+ */
+export async function encodeClip(media, span, output, signal) {
   const args = ['-loglevel', 'error', '-y', ...spanOptions(media, span), ...inputOptions(media.input)];
-  args.push('-i', media.input, '-c', 'copy', output);
+  args.push('-i', media.input, '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '-1', '-map_chapters', '-1');
+  args.push('-vf', "scale=-2:'min(720,trunc(ih/2)*2)'", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28');
+  args.push('-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', output);
   await ffmpeg(args, signal);
 }

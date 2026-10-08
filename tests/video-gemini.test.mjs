@@ -154,7 +154,7 @@ test('a file over 200 MB needs a range, and a range sends only the cut part', as
   );
   assert.match(result.content[0].text, /Range: 1:00 to 2:00/);
   assert.equal(api.requests[0].headers['X-Goog-Upload-Header-Content-Length'], '64');
-  const cut = (await calls()).find(call => call.program === 'ffmpeg' && call.args.includes('copy'));
+  const cut = (await calls()).find(call => call.program === 'ffmpeg' && call.args.includes('libx264'));
   assert.deepEqual(cut.args.slice(cut.args.indexOf('-ss'), cut.args.indexOf('-ss') + 4), ['-ss', '60', '-t', '60']);
 });
 
@@ -187,7 +187,7 @@ test('Esc while Gemini answers still deletes the uploaded video', async t => {
   assert.equal(api.requests.at(-1).method, 'DELETE');
 });
 
-test('local files are remuxed to MP4 before upload, and answers about a part say where its times start', async t => {
+test('videos are re-encoded as small MP4 without metadata before upload, and answers about a part say where its times start', async t => {
   const file = { name: 'files/r', uri: `${API}/v1beta/files/r`, mimeType: 'video/mp4', state: 'ACTIVE' };
   const api = gemini({
     [`POST ${API}/upload/v1beta/files`]: () =>
@@ -213,9 +213,11 @@ test('local files are remuxed to MP4 before upload, and answers about a part say
       cwd: directory,
     },
   );
-  const remux = (await calls()).find(call => call.program === 'ffmpeg' && call.args.includes('copy'));
-  assert.ok(remux.args.at(-1).endsWith('.mp4'));
-  assert.ok(!remux.args.includes('-ss'));
+  const encode = (await calls()).find(call => call.program === 'ffmpeg' && call.args.includes('libx264'));
+  assert.ok(encode.args.at(-1).endsWith('.mp4'));
+  assert.ok(!encode.args.includes('-ss'));
+  assert.ok(!encode.args.includes('copy'));
+  assert.equal(encode.args[encode.args.indexOf('-map_metadata') + 1], '-1');
   assert.doesNotMatch(whole.content[0].text, /times start/);
   assert.ok(updates.some(update => /Uploading/.test(update.content[0].text)));
   const part = await tools.video_ask.execute(
@@ -239,4 +241,94 @@ test('a misconfigured key file still offers video_ask, whose call then explains 
     },
   })(fake.pi);
   assert.ok(fake.tools.has('video_ask'));
+});
+
+const uploadRoutes = (name, session) => ({
+  [`POST ${API}/upload/v1beta/files`]: () =>
+    json({}, { headers: { 'x-goog-upload-url': `${API}/upload/session/${session}` } }),
+  [`POST ${API}/upload/session/${session}`]: () =>
+    json({
+      file: { name: `files/${name}`, uri: `${API}/v1beta/files/${name}`, mimeType: 'video/mp4', state: 'ACTIVE' },
+    }),
+});
+const localVideo = async (t, fetch, extra = {}) => {
+  const probe = { format: { duration: '20', format_name: 'mov,mp4' }, streams: [{ codec_type: 'video' }] };
+  const context = await setup(t, { probe }, { config, gemini: { fetch, pollMs: 1, ...extra } });
+  await writeFile(join(context.directory, 'clip.mp4'), 'local video');
+  return context;
+};
+
+test('Esc while the upload answer is read still finds the stored video by its name and deletes it', async t => {
+  const controller = new AbortController();
+  const api = gemini({
+    ...uploadRoutes('lost', 'l'),
+    [`GET ${API}/v1beta/files?pageSize=100`]: () =>
+      json({
+        files: [
+          { name: 'files/other', displayName: 'someone else' },
+          { name: 'files/lost', displayName: stored },
+        ],
+      }),
+    [`DELETE ${API}/v1beta/files/lost`]: () => json({}),
+  });
+  let stored;
+  const fetch = async (url, init = {}) => {
+    const response = await api.fetch(url, init);
+    if (url.endsWith('/upload/session/l')) {
+      stored = api.requests[0].body.file.display_name;
+      controller.abort();
+      throw controller.signal.reason;
+    }
+    return response;
+  };
+  const { tools, directory } = await localVideo(t, fetch);
+  await assert.rejects(
+    tools.video_ask.execute('1', { source: 'clip.mp4', question: 'Q' }, controller.signal, undefined, {
+      cwd: directory,
+    }),
+    { name: 'AbortError' },
+  );
+  assert.match(stored, /^pi-video-[0-9a-f-]{36}$/);
+  assert.deepEqual(
+    api.requests.slice(-2).map(request => `${request.method} ${request.url.replace(API, '')}`),
+    ['GET /v1beta/files?pageSize=100', 'DELETE /v1beta/files/lost'],
+  );
+});
+
+test('a failed deletion is reported with the answer instead of being hidden', async t => {
+  const api = gemini({
+    ...uploadRoutes('kept', 'k'),
+    [generate('gemini-3.5-flash-lite')]: () => json(answer('Fine.')),
+    [`DELETE ${API}/v1beta/files/kept`]: () => json({ error: { message: 'backend error' } }, { status: 500 }),
+  });
+  const { tools, directory } = await localVideo(t, api.fetch);
+  const result = await tools.video_ask.execute('1', { source: 'clip.mp4', question: 'Q' }, undefined, undefined, {
+    cwd: directory,
+  });
+  assert.match(result.content[0].text, /Fine\./);
+  assert.match(result.content[0].text, /could not be deleted from Gemini.*HTTP 500.*backend error.*48 hours/s);
+});
+
+test('the processing time limit also stops a status request that hangs', async t => {
+  const file = { name: 'files/slow', uri: `${API}/v1beta/files/slow`, mimeType: 'video/mp4', state: 'PROCESSING' };
+  const api = gemini({
+    [`POST ${API}/upload/v1beta/files`]: () =>
+      json({}, { headers: { 'x-goog-upload-url': `${API}/upload/session/s` } }),
+    [`POST ${API}/upload/session/s`]: () => json({ file }),
+    [`DELETE ${API}/v1beta/files/slow`]: () => json({}),
+  });
+  const fetch = (url, init = {}) =>
+    url === `${API}/v1beta/files/slow` && init.method === undefined
+      ? new Promise((_, reject) =>
+          init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }),
+        )
+      : api.fetch(url, init);
+  const { tools, directory } = await localVideo(t, fetch, { processingTimeoutMs: 100 });
+  const started = Date.now();
+  await assert.rejects(
+    tools.video_ask.execute('1', { source: 'clip.mp4', question: 'Q' }, undefined, undefined, { cwd: directory }),
+    /Gemini took too long to process the video/,
+  );
+  assert.ok(Date.now() - started < 2000);
+  assert.equal(api.requests.at(-1).method, 'DELETE');
 });

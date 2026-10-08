@@ -50,7 +50,7 @@ we're no strangers
 to<00:00:02.500><c> love</c>
 `;
   assert.deepEqual(
-    parseCaptions(vtt).map(cue => cue.text),
+    parseCaptions(vtt, { rolling: true }).map(cue => cue.text),
     ["we're no strangers", 'to love'],
   );
 });
@@ -64,4 +64,25 @@ test('a transcript lists timestamped cues within the requested span', () => {
   ];
   assert.equal(formatTranscript(cues), '[0:05] before\n[0:58] overlaps the start\n[1:15] inside\n[2:10] after');
   assert.equal(formatTranscript(cues, { from: 60, to: 120 }), '[0:58] overlaps the start\n[1:15] inside');
+});
+
+test('repeated words stay in subtitles and whisper output; only rolling captions lose repeats', () => {
+  const apart = '1\n00:00:01,000 --> 00:00:02,000\nNo\n\n2\n00:00:10,000 --> 00:00:11,000\nNo\n';
+  assert.deepEqual(
+    parseCaptions(apart).map(cue => cue.text),
+    ['No', 'No'],
+  );
+  const contiguous = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nNo\n\n00:00:02.000 --> 00:00:03.000\nNo\n';
+  assert.deepEqual(
+    parseCaptions(contiguous).map(cue => cue.text),
+    ['No', 'No'],
+  );
+  assert.deepEqual(
+    parseCaptions(contiguous, { rolling: true }).map(cue => cue.text),
+    ['No'],
+  );
+  assert.deepEqual(
+    parseCaptions(apart, { rolling: true }).map(cue => cue.text),
+    ['No', 'No'],
+  );
 });

@@ -61,10 +61,12 @@ GEMINI_API_KEY=your_gemini_key
 GEMINI_VIDEO_MODEL=gemini-3.5-flash-lite
 ```
 
-- A YouTube URL is passed to Gemini as is. Any other video, downloaded or local, is rewritten as
-  MP4 without re-encoding, uploaded through the Gemini Files API and deleted once Gemini has
-  answered, even if you press Esc. For an uploaded part, Gemini's times start at the part. Configuring the key is your
-  consent to send local files.
+- A YouTube URL is passed to Gemini as is. Any other video, downloaded or local, is re-encoded as
+  a small MP4 (H.264, 720p at most, no metadata such as location), cut exactly to `from`/`to` when
+  given, uploaded through the Gemini Files API, and deleted once Gemini has answered, even if you
+  press Esc. If the deletion fails, the answer says so; Gemini deletes uploads after 48 hours
+  anyway. For an uploaded part, Gemini's times start at the part. Re-encoding needs an ffmpeg
+  built with libx264, as Homebrew's is.
 - Videos over 200 MB need `from`/`to`: only that part is cut and sent.
 - Costs depend on your Gemini account; with the default model, about $0.02 per 10 minutes of
   video. On the free tier, Google may use what you send to improve its products, except in the

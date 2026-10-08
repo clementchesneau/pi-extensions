@@ -8,7 +8,9 @@ import { parseCaptions } from './transcript.js';
 import { captionTrack, downloadCaptions, downloadVideo, readInfo, streamUrl } from './ytdlp.js';
 
 const PREFIX = 'pi-video-';
-const OWNER = 'owner';
+// Marks a session directory with the process that owns it, for the sweep of crashed sessions.
+const MARKER = '.pi-video-owner';
+const MAX_PID = 2 ** 31 - 1;
 // Sites make stream addresses expire, YouTube after about six hours.
 const STREAM_LIFETIME_MS = 60 * 60_000;
 // Formats ffprobe reads as video although they are pictures or text.
@@ -23,21 +25,30 @@ const NOT_VIDEO = /(?:^|,)(?:tty|image2|[a-z0-9]+_pipe)(?:,|$)/;
  * }} VideoEntry
  */
 
-const alive = pid => {
+/** Whether a process may still exist; only a definite "no such process" says it is gone. */
+const gone = pid => {
   try {
     process.kill(pid, 0);
-    return true;
+    return false;
   } catch (error) {
-    return /** @type {NodeJS.ErrnoException} */ (error).code === 'EPERM';
+    return /** @type {NodeJS.ErrnoException} */ (error).code === 'ESRCH';
   }
 };
 
-/** Only a directory this extension created, owned by this user, whose session process is gone. */
+const ownedByUser = info => !process.getuid || info.uid === process.getuid();
+
+/**
+ * Only a directory this user's session created, with a plain marker file naming a process that
+ * is gone. Anything unexpected keeps the directory: a FIFO or link marker is never opened.
+ */
 async function isOrphan(directory) {
   const info = await lstat(directory);
-  if (!info.isDirectory() || (process.getuid && info.uid !== process.getuid())) return false;
-  const owner = Number(await readFile(join(directory, OWNER), 'utf8').catch(() => ''));
-  return owner > 0 && !alive(owner);
+  if (!info.isDirectory() || !ownedByUser(info)) return false;
+  const marker = await lstat(join(directory, MARKER)).catch(() => undefined);
+  if (!marker?.isFile() || !ownedByUser(marker) || marker.size > 16) return false;
+  const text = (await readFile(join(directory, MARKER), 'utf8')).trim();
+  const pid = Number(text);
+  return /^\d{1,10}$/.test(text) && pid > 0 && pid <= MAX_PID && gone(pid);
 }
 
 /** A local path as Pi's own tools read it: relative to the working directory, ~ and a leading @ allowed. */
@@ -116,7 +127,7 @@ export class VideoLibrary {
 
   directory() {
     this.#directory ??= mkdtemp(join(this.tmp, PREFIX)).then(async directory => {
-      await writeFile(join(directory, OWNER), String(process.pid), { mode: 0o600 });
+      await writeFile(join(directory, MARKER), String(process.pid), { mode: 0o600 });
       return directory;
     });
     const pending = this.#directory;
@@ -209,7 +220,7 @@ export class VideoLibrary {
     if (!entry.track) return Promise.resolve(undefined);
     return this.#once(`captions:${entry.key}`, async () => {
       const text = await downloadCaptions(entry.url, entry.track, await this.workspace('captions'), signal);
-      return text ? parseCaptions(text) : undefined;
+      return text ? parseCaptions(text, { rolling: entry.track.automatic }) : undefined;
     });
   }
 }

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createVideoTools } from '../packages/video/index.js';
 import { VideoLibrary } from '../packages/video/library.js';
+import { encodeClip } from '../packages/video/media.js';
 
 const installed = program => {
   try {
@@ -48,5 +49,60 @@ test(
     const detail = await frames.execute('2', { source: 'cut.mp4', timestamps: ['4.5'] }, undefined, undefined, ctx);
     assert.equal(detail.content.filter(block => block.type === 'image').length, 1);
     assert.match(overview.description + result.content[0].text, /No transcript/);
+  },
+);
+
+test(
+  'with the real ffmpeg, a clip for Gemini holds only its span, even before the first keyframe of the span',
+  { skip: !installed('ffmpeg') && 'ffmpeg is not installed' },
+  async t => {
+    const directory = await mkdtemp(join(tmpdir(), 'pi-video-clip-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    // Red then blue, with a single keyframe at 0: a stream copy of 4-5 s would carry red frames.
+    const colors = ['red', 'blue'].flatMap(color => ['-f', 'lavfi', '-i', `color=c=${color}:s=320x240:d=3:r=25`]);
+    const source = join(directory, 'source.mp4');
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      ...colors,
+      '-filter_complex',
+      '[0][1]concat=n=2:v=1:a=0',
+      '-g',
+      '1000',
+      '-metadata',
+      'location=+48.85+002.35/',
+      source,
+    ]);
+    const clip = join(directory, 'clip.mp4');
+    await encodeClip({ input: source, offset: 0 }, { from: 4, to: 5 }, clip);
+    const raw = execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-ignore_editlist',
+      '1',
+      '-i',
+      clip,
+      '-vf',
+      'scale=1:1',
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgb24',
+      '-',
+    ]);
+    const frames = raw.length / 3;
+    assert.ok(frames >= 24 && frames <= 26, `${frames} frames`);
+    for (let index = 0; index < raw.length; index += 3)
+      assert.ok(raw[index] < 80 && raw[index + 2] > 160, `frame ${index / 3} is not blue`);
+    const tags = execFileSync('ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'format_tags',
+      '-of',
+      'json',
+      clip,
+    ]).toString();
+    assert.doesNotMatch(tags, /location/);
   },
 );

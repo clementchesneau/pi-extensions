@@ -271,9 +271,9 @@ test('the session directory is private, removed at shutdown, and orphans of dead
   assert.deepEqual(await readdir(root), []);
 
   await mkdir(join(root, 'pi-video-dead'));
-  await writeFile(join(root, 'pi-video-dead', 'owner'), '999999999');
+  await writeFile(join(root, 'pi-video-dead', '.pi-video-owner'), '999999999');
   await mkdir(join(root, 'pi-video-alive'));
-  await writeFile(join(root, 'pi-video-alive', 'owner'), String(process.pid));
+  await writeFile(join(root, 'pi-video-alive', '.pi-video-owner'), String(process.pid));
   await mkdir(join(root, 'unrelated'));
   await VideoLibrary.sweepOrphans(root);
   assert.deepEqual((await readdir(root)).sort(), ['pi-video-alive', 'unrelated']);
@@ -390,6 +390,33 @@ test('a local file must be a real video: images and text read as video by ffprob
       /is not a video file/,
     );
   }
+});
+
+test('an audio file with embedded cover art is not a video', async t => {
+  const probe = {
+    format: { duration: '180', format_name: 'mp3' },
+    streams: [{ codec_type: 'audio' }, { codec_type: 'video', disposition: { attached_pic: 1 } }],
+  };
+  const { tools, directory } = await setup(t, { probe });
+  await writeFile(join(directory, 'song.mp3'), 'x');
+  await assert.rejects(
+    tools.video_overview.execute('1', { source: 'song.mp3' }, undefined, undefined, { ...VISION, cwd: directory }),
+    /song\.mp3 has no video stream/,
+  );
+});
+
+test('automatic captions lose rolling repeats while manual subtitles keep repeated words', async t => {
+  const rolling = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nNo\n\n00:00:02.000 --> 00:00:03.000\nNo\nmore\n';
+  const automatic = await setup(t, { info: info({ subtitles: {} }), captions: rolling });
+  const auto = await automatic.tools.video_overview.execute('1', { source: URL_SOURCE }, undefined, undefined, {
+    model: { input: ['text'] },
+  });
+  assert.match(auto.content[0].text, /Transcript \(automatic subtitles, en-orig\):\n\[0:01\] No\n\[0:02\] more\n/);
+  const manual = await setup(t, { info: info(), captions: rolling });
+  const kept = await manual.tools.video_overview.execute('1', { source: URL_SOURCE }, undefined, undefined, {
+    model: { input: ['text'] },
+  });
+  assert.match(kept.content[0].text, /\[0:01\] No\n\[0:02\] No more\n/);
 });
 
 test('local paths accept ~ for the home directory and a leading @, like Pi tools', async t => {

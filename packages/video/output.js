@@ -87,13 +87,13 @@ export function overviewResult(library, overview) {
  * @param {Awaited<ReturnType<typeof import('./gemini.js').askGemini>>} reply
  */
 export function askResult(library, reply) {
-  const { entry, span, model, uploaded, answer } = reply;
+  const { entry, span, model, uploaded, answer, warning } = reply;
   // An uploaded part starts at 0:00 for Gemini, whatever its place in the video.
   const offset =
     uploaded && span?.from
       ? `\nGemini saw only this part: 0:00 in its answer is ${formatTimestamp(span.from)} in the video.`
       : '';
-  return result(library, [`${header(entry, span)}\nModel: ${model}${offset}`, answer], [], {
+  return result(library, [`${header(entry, span)}\nModel: ${model}${offset}`, answer, warning], [], {
     source: entry.source,
     model,
     uploaded,

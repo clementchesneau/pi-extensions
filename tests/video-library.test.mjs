@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { VideoLibrary } from '../packages/video/library.js';
@@ -14,7 +15,7 @@ test('the sweep removes only dead sessions directories it created, and survives 
   });
   const session = async (name, owner) => {
     await mkdir(join(root, name));
-    if (owner !== undefined) await writeFile(join(root, name, 'owner'), owner);
+    if (owner !== undefined) await writeFile(join(root, name, '.pi-video-owner'), owner);
   };
   await session('pi-video-locked', '999999998');
   await writeFile(join(root, 'pi-video-locked', 'kept'), 'x');
@@ -83,4 +84,33 @@ test('a stream address on a private network is refused before ffmpeg reads it', 
   });
   const entry = /** @type {any} */ ({ kind: 'url', key: 'k', url: 'https://example.com/v' });
   await assert.rejects(library.stream(entry), /Non-public network address blocked/);
+});
+
+test('the sweep keeps directories whose owner marker is not a plain process number', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-video-markers-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const [name, owner] of [
+    ['pi-video-infinite', 'Infinity'],
+    ['pi-video-word', '12abc'],
+    ['pi-video-huge', '99999999999999999999'],
+  ]) {
+    await mkdir(join(root, name));
+    await writeFile(join(root, name, '.pi-video-owner'), owner);
+  }
+  await writeFile(join(root, 'dead-pid'), '999999999');
+  await mkdir(join(root, 'pi-video-link'));
+  await symlink(join(root, 'dead-pid'), join(root, 'pi-video-link', '.pi-video-owner'));
+  await mkdir(join(root, 'pi-video-fifo'));
+  execFileSync('mkfifo', [join(root, 'pi-video-fifo', '.pi-video-owner')]);
+  const started = Date.now();
+  await VideoLibrary.sweepOrphans(root);
+  assert.ok(Date.now() - started < 2000, 'the sweep must not wait on a FIFO');
+  assert.deepEqual((await readdir(root)).sort(), [
+    'dead-pid',
+    'pi-video-fifo',
+    'pi-video-huge',
+    'pi-video-infinite',
+    'pi-video-link',
+    'pi-video-word',
+  ]);
 });

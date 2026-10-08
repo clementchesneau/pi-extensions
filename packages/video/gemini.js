@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { cutClip } from './media.js';
+import { encodeClip } from './media.js';
 import { progress, requestedSpan } from './overview.js';
 
 const API = 'https://generativelanguage.googleapis.com';
@@ -32,8 +33,11 @@ async function call(client, url, init = {}, signal = client.signal) {
   throw new Error(`Gemini request failed (HTTP ${response.status})${message ? `: ${message}` : ''}.`);
 }
 
-/** Resumable upload through the Files API, streamed from disk. @returns {Promise<GeminiFile>} */
-async function upload(client, path, size) {
+/**
+ * Resumable upload through the Files API, streamed from disk, under a name unique to this upload.
+ * @returns {Promise<GeminiFile>}
+ */
+async function upload(client, { path, size, displayName }) {
   const start = await call(client, `${API}/upload/v1beta/files`, {
     method: 'POST',
     headers: {
@@ -43,7 +47,7 @@ async function upload(client, path, size) {
       'X-Goog-Upload-Header-Content-Type': 'video/mp4',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ file: { display_name: 'pi-video' } }),
+    body: JSON.stringify({ file: { display_name: displayName } }),
   });
   const session = start.headers.get('x-goog-upload-url');
   if (!session) throw new Error('Gemini did not return an upload address.');
@@ -60,18 +64,48 @@ async function upload(client, path, size) {
   return (await done.json()).file;
 }
 
-/** Waits until Gemini has processed the uploaded video. */
+/** Waits until Gemini has processed the uploaded video; the time limit also stops a hanging request. */
 async function active(client, file, { pollMs, timeoutMs }) {
-  const deadline = Date.now() + timeoutMs;
-  let current = file;
-  while (current.state === 'PROCESSING') {
-    if (Date.now() > deadline) throw new Error('Gemini took too long to process the video.');
-    await sleep(pollMs, undefined, { signal: client.signal });
-    current = await (await call(client, `${API}/v1beta/${file.name}`)).json();
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = AbortSignal.any([deadline, ...(client.signal ? [client.signal] : [])]);
+  try {
+    let current = file;
+    while (current.state === 'PROCESSING') {
+      await sleep(pollMs, undefined, { signal });
+      current = await (await call(client, `${API}/v1beta/${file.name}`, {}, signal)).json();
+    }
+    if (current.state !== 'ACTIVE') throw new Error(`Gemini could not process the video (state ${current.state}).`);
+    return current;
+  } catch (error) {
+    if (deadline.aborted && !client.signal?.aborted) {
+      throw new Error('Gemini took too long to process the video.', { cause: error });
+    }
+    throw error;
   }
-  if (current.state !== 'ACTIVE') throw new Error(`Gemini could not process the video (state ${current.state}).`);
-  return current;
 }
+
+/** Deletes an upload with its own deadline, since the tool's signal may be cancelled; returns the failure. */
+async function remove(client, name) {
+  const signal = AbortSignal.timeout(DELETE_LIMIT_MS);
+  return call(client, `${API}/v1beta/${name}`, { method: 'DELETE' }, signal).then(
+    () => undefined,
+    error => error,
+  );
+}
+
+/**
+ * Deletes the upload with this display name, for an upload whose answer was lost: the file may
+ * exist on Google's side without this extension knowing its name.
+ */
+async function removeByDisplayName(client, displayName) {
+  const signal = AbortSignal.timeout(DELETE_LIMIT_MS);
+  const listed = await (await call(client, `${API}/v1beta/files?pageSize=100`, {}, signal)).json();
+  const file = (listed.files ?? []).find(candidate => candidate.displayName === displayName);
+  if (file) await remove(client, file.name);
+}
+
+const deletionWarning = error =>
+  `Warning: the uploaded video could not be deleted from Gemini (${error.message}); Gemini deletes uploads after 48 hours.`;
 
 async function generate(client, model, parts) {
   const response = await call(client, `${API}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -90,8 +124,8 @@ async function generate(client, model, parts) {
 }
 
 /**
- * The file to send, always rewritten as MP4 without re-encoding: a real video container whose type
- * matches the upload's, cut to the span when there is one.
+ * The file to send, re-encoded as a small MP4 without metadata and cut exactly to the span: only
+ * that part of the video leaves the machine, whatever its codec.
  */
 async function videoFile(library, { entry, span, signal, onUpdate }) {
   const media = await library.media(entry, span, signal, () => progress(onUpdate, 'Downloading the video…'));
@@ -99,7 +133,7 @@ async function videoFile(library, { entry, span, signal, onUpdate }) {
   if (!span) assertUploadable((await stat(media.input)).size, span);
   progress(onUpdate, 'Preparing the video…');
   const output = join(await library.workspace('clip'), 'clip.mp4');
-  await cutClip(media, span, output, signal);
+  await encodeClip(media, span, output, signal);
   return output;
 }
 
@@ -116,22 +150,34 @@ async function uploadedAnswer(client, job) {
   const { size } = await stat(path);
   assertUploadable(size, span);
   progress(onUpdate, 'Uploading the video to Gemini…');
-  const file = await upload(client, path, size);
+  const displayName = `pi-video-${randomUUID()}`;
+  let file;
+  try {
+    file = await upload(client, { path, size, displayName });
+  } catch (error) {
+    await removeByDisplayName(client, displayName).catch(() => undefined);
+    throw error;
+  }
+  let answer;
+  let failure;
   try {
     progress(onUpdate, 'Waiting for Gemini to process the video…');
     const ready = await active(client, file, polling);
     progress(onUpdate, 'Asking Gemini…');
-    return await generate(client, model, [
+    answer = await generate(client, model, [
       { fileData: { fileUri: ready.uri, mimeType: ready.mimeType } },
       { text: question },
     ]);
-  } finally {
-    // Do not keep the video on Google's side longer than the question needs, even after Esc:
-    // the deletion has its own deadline rather than the tool's signal.
-    await call(client, `${API}/v1beta/${file.name}`, { method: 'DELETE' }, AbortSignal.timeout(DELETE_LIMIT_MS)).catch(
-      () => undefined,
-    );
+  } catch (error) {
+    failure = error;
   }
+  // Do not keep the video on Google's side longer than the question needs, even after Esc.
+  const undeleted = await remove(client, file.name);
+  if (failure) {
+    if (!undeleted || client.signal?.aborted) throw failure;
+    throw new Error(`${failure.message} ${deletionWarning(undeleted)}`, { cause: failure });
+  }
+  return { answer, warning: undeleted && deletionWarning(undeleted) };
 }
 
 /**
@@ -154,6 +200,6 @@ export async function askGemini(library, params, { signal, onUpdate, cwd, readCo
   }
   const polling = { pollMs: gemini.pollMs ?? 2000, timeoutMs: gemini.processingTimeoutMs ?? PROCESSING_LIMIT_MS };
   const job = { library, entry, span, model, question: params.question, polling, onUpdate };
-  const answer = await uploadedAnswer(client, job);
-  return { entry, span, model, uploaded: true, answer };
+  const { answer, warning } = await uploadedAnswer(client, job);
+  return { entry, span, model, uploaded: true, answer, warning };
 }

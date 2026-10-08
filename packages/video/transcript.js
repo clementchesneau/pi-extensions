@@ -3,6 +3,7 @@ import { formatTimestamp } from './frames.js';
 import { runProgram } from './process.js';
 
 const WHISPER_LIMIT_MS = 30 * 60_000;
+const ROLLING_GAP_SECONDS = 0.5;
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&nbsp;': ' ', '&#39;': "'", '&quot;': '"' };
 
 function seconds(text) {
@@ -21,14 +22,16 @@ const clean = line =>
     .trim();
 
 /**
- * Cues of WebVTT or SubRip captions, without markup. Rolling automatic captions repeat the
- * previous cue's lines; each line is kept once.
+ * Cues of WebVTT or SubRip captions, without markup. With `rolling`, for automatic captions that
+ * repeat the lines of the cue just before, a line repeated from a cue that ends where this one
+ * starts is kept once; spoken repetitions elsewhere stay.
  * @param {string} text
+ * @param {{ rolling?: boolean }} [options]
  * @returns {{ start: number, end: number, text: string }[]}
  */
-export function parseCaptions(text) {
+export function parseCaptions(text, { rolling = false } = {}) {
   const cues = [];
-  let previous = [];
+  let previous = { lines: [], end: Number.NEGATIVE_INFINITY };
   for (const block of text.replace(/\r/g, '').split(/\n\s*\n/)) {
     const lines = block.split('\n');
     const timing = lines.findIndex(line => line.includes('-->'));
@@ -38,9 +41,11 @@ export function parseCaptions(text) {
       .slice(timing + 1)
       .map(clean)
       .filter(Boolean);
-    const fresh = textLines.filter(line => !previous.includes(line));
-    if (textLines.length) previous = textLines;
-    if (fresh.length) cues.push({ start: seconds(startText), end: seconds(endText), text: fresh.join(' ') });
+    const [start, end] = [seconds(startText), seconds(endText)];
+    const rolled = rolling && start - previous.end < ROLLING_GAP_SECONDS;
+    const fresh = rolled ? textLines.filter(line => !previous.lines.includes(line)) : textLines;
+    if (textLines.length) previous = { lines: textLines, end };
+    if (fresh.length) cues.push({ start, end, text: fresh.join(' ') });
   }
   return cues.filter(cue => Number.isFinite(cue.start));
 }
