@@ -149,6 +149,9 @@ importers:
 
   packages/ui-check:
     dependencies:
+      '@clement_chsn/pi-shared':
+        specifier: workspace:*
+        version: link:../shared
       playwright:
         specifier: 1.63.0
         version: 1.63.0
@@ -159,6 +162,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@clement_chsn/pi-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@mozilla/readability':
         specifier: 0.6.0
         version: 0.6.0

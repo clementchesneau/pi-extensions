@@ -25,11 +25,13 @@
   },
   "exports": {
     "./activity-indicator": "./activity-indicator.js",
+    "./bounded-text": "./bounded-text.js",
     "./full-page": "./full-page.js",
     "./process-tree": "./process-tree.js",
     "./task-list": "./task-list.js",
     "./terminal-text": "./terminal-text.js",
-    "./tool-result": "./tool-result.js"
+    "./tool-result": "./tool-result.js",
+    "./user-config": "./user-config.js"
   },
   "peerDependencies": {
     "@earendil-works/pi-tui": "*"

@@ -32,6 +32,7 @@
     "typebox": "*"
   },
   "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*",
     "playwright": "1.63.0"
   },
   "devDependencies": {

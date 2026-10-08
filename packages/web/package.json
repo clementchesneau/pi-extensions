@@ -32,6 +32,7 @@
     "typebox": "*"
   },
   "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*",
     "@mozilla/readability": "0.6.0",
     "@upstash/context7-sdk": "0.4.1",
     "ipaddr.js": "2.5.0",
