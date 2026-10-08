@@ -2,7 +2,7 @@ import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import TurndownService from 'turndown';
 import { fetchGitHub, githubTarget } from './github.js';
-import { publicGet } from './http.js';
+import { checkedUrl, publicGet } from './http.js';
 import { IMAGE_TYPES, imagePage } from './image.js';
 import { hasPdfSignature, pdfPage } from './pdf.js';
 import { publicResultUrl } from './search.js';
@@ -12,6 +12,7 @@ const PDF_TYPES = ['application/pdf', 'application/x-pdf'];
 // S3 serves files without a declared type as binary/octet-stream.
 const BINARY_TYPES = ['application/octet-stream', 'binary/octet-stream'];
 const PAGE_LIMIT = 4 * 1024 * 1024;
+const TIME_LIMIT_MS = 20_000;
 const DOCUMENT_LIMIT = 20 * 1024 * 1024;
 
 const mediaType = headers =>
@@ -82,16 +83,20 @@ function pageError(status, github) {
 
 /**
  * @param {{ url: string }} params
- * @param {{ signal?: AbortSignal, request?: typeof publicGet }} [options]
+ * @param {{ signal?: AbortSignal, request?: typeof publicGet, timeLimitMs?: number }} [options]
  */
-export async function fetchPage({ url }, { signal, request = publicGet } = {}) {
+export async function fetchPage({ url }, { signal, request = publicGet, timeLimitMs = TIME_LIMIT_MS } = {}) {
+  // Rewrites below must not bypass the rules of the URL actually requested.
+  checkedUrl(url);
+  // One deadline for every request behind the URL; PDF extraction keeps its own limit.
+  const deadline = AbortSignal.any([AbortSignal.timeout(timeLimitMs), ...(signal ? [signal] : [])]);
   const github = githubTarget(url);
   if (github && github.type !== 'file') {
-    const page = await fetchGitHub(github, { signal, request });
+    const page = await fetchGitHub(github, { signal: deadline, request, budget: { remaining: PAGE_LIMIT } });
     if (page) return page;
   }
   const response = await request(github?.type === 'file' ? github.rawUrl : url, {
-    signal,
+    signal: deadline,
     headers: {
       Accept: `text/html, text/plain, text/markdown, application/json, application/pdf, ${IMAGE_TYPES.join(', ')}`,
     },

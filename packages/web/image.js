@@ -1,3 +1,5 @@
+import { resizeImage } from '@earendil-works/pi-coding-agent';
+
 // The formats Pi can resize and every image-capable provider accepts, recognized by their signature.
 /** @type {[string, (bytes: Buffer) => boolean][]} */
 const SIGNATURES = [
@@ -11,17 +13,23 @@ const RASTER_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/gif
 export const IMAGE_TYPES = SIGNATURES.map(([mimeType]) => mimeType);
 
 /**
- * An image for the model, typed by its file signature: a declared type can be wrong, and a model
- * provider rejects an image whose bytes do not match its type, on every later turn too.
+ * An image for the model, typed by its file signature and fully decoded: a declared type can be
+ * wrong, and a model provider rejects an image whose bytes do not match its type, on every later
+ * turn too.
  * @param {Uint8Array | undefined} bytes
  * @param {string} declaredType
  * @param {string} finalUrl
  */
-export function imagePage(bytes, declaredType, finalUrl) {
+export async function imagePage(bytes, declaredType, finalUrl) {
   const buffer = Buffer.from(bytes ?? []);
   const mimeType = SIGNATURES.find(([, matches]) => matches(buffer))?.[0];
   if (mimeType) {
-    return { title: finalUrl, extraction: 'image', markdown: '', image: { data: buffer.toString('base64'), mimeType } };
+    // Decoding with Pi's own image backend proves the bytes are a whole image: Pi keeps an image
+    // it cannot decode in the history, and the provider may then reject every later request.
+    const decoded = await resizeImage(buffer, mimeType);
+    if (!decoded) throw new Error(`The ${mimeType} image cannot be decoded: it may be truncated or corrupt.`);
+    const image = { data: decoded.data, mimeType: decoded.mimeType };
+    return { title: finalUrl, extraction: 'image', markdown: '', image };
   }
   if (RASTER_TYPES.has(declaredType)) {
     throw new Error(`The content is declared as ${declaredType} but is not a PNG, JPEG, GIF or WebP image.`);

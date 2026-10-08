@@ -29,6 +29,7 @@
     ]
   },
   "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "unpdf": "1.8.1"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
     "typebox": "catalog:"
   }
 }

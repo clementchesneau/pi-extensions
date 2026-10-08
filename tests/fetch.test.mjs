@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fetchPage } from '../packages/web/fetch.js';
 import { minimalPdf } from './fixtures/minimal-pdf.mjs';
+import { TINY_IMAGES } from './fixtures/tiny-images.mjs';
 
 test('extracts HTML locally, resolves links against final URL and drops active content', async () => {
   const page = await fetchPage(
@@ -143,12 +144,7 @@ test('reports a PDF without extractable text as possibly scanned, since OCR is n
   );
 });
 
-const IMAGES = {
-  'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]),
-  'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]),
-  'image/gif': Buffer.from('GIF89a\x01\x00', 'latin1'),
-  'image/webp': Buffer.concat([Buffer.from('RIFF'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBPVP8 ')]),
-};
+const IMAGES = TINY_IMAGES;
 const imageResponse = (contentType, bytes) => async (_url, requestOptions) => ({
   url: 'https://example.com/diagram',
   status: 200,
@@ -200,6 +196,14 @@ test('the image type sent to the model comes from the file signature, not the de
       { request: imageResponse('image/svg+xml', Buffer.from('<svg/>')) },
     ),
     /Unsupported image type: image\/svg\+xml.*PNG, JPEG, GIF and WebP/,
+  );
+});
+
+test('an image that cannot be decoded is refused rather than sent to the model', async () => {
+  const truncated = IMAGES['image/png'].subarray(0, 10);
+  await assert.rejects(
+    fetchPage({ url: 'https://example.com/broken.png' }, { request: imageResponse('image/png', truncated) }),
+    /image cannot be decoded: it may be truncated or corrupt/,
   );
 });
 

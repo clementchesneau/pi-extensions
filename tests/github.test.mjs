@@ -256,3 +256,39 @@ test('an issue with more comments than one page says how many are shown', async 
   assert.match(page.markdown, /## Comments \(150\)/);
   assert.match(page.markdown, /\[Showing the first 100 of 150 comments\.\]$/);
 });
+
+test('GitHub URLs obey the same URL refusals as other pages before any rewrite', async () => {
+  const { requested, request } = routes({});
+  for (const [url, refusal] of [
+    ['ftp://github.com/acme/widgets', /Only public HTTP\(S\) URLs/],
+    ['https://user:secret@github.com/acme/widgets/issues/7', /credentials/],
+    ['https://github.com:8443/acme/widgets/blob/main/a.js', /Nonstandard ports/],
+  ]) {
+    await assert.rejects(fetchPage({ url }, { request }), refusal);
+  }
+  assert.deepEqual(requested, []);
+});
+
+test('the requests behind one GitHub URL share its 4 MiB budget', async () => {
+  const listing = json([{ name: 'a.js', path: 'a.js', type: 'file', size: 1 }]);
+  const limits = [];
+  const request = async (url, options) => {
+    limits.push(options.maxBytes);
+    if (url.endsWith('/contents/')) return { url, ...listing };
+    return { status: 404, headers: {}, body: '' };
+  };
+  await fetchPage({ url: 'https://github.com/acme/widgets' }, { request });
+  assert.deepEqual(limits, [4 * 1024 * 1024, 4 * 1024 * 1024 - Buffer.byteLength(listing.body)]);
+});
+
+test('the requests behind one GitHub URL share its time limit', async () => {
+  const slow = (url, { signal }) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(url.endsWith('/7') ? { url, ...json(issue) } : { url, ...json([]) }), 60);
+      signal.addEventListener('abort', () => (clearTimeout(timer), reject(signal.reason)), { once: true });
+    });
+  await assert.rejects(
+    fetchPage({ url: 'https://github.com/acme/widgets/issues/7' }, { request: slow, timeLimitMs: 80 }),
+    { name: 'TimeoutError' },
+  );
+});

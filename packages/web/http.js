@@ -6,7 +6,8 @@ import ipaddr from 'ipaddr.js';
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
-function checkedUrl(input) {
+/** The URL rules every request obeys: public HTTP(S), no credentials, no explicit port. */
+export function checkedUrl(input) {
   const url = new URL(input);
   if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Only public HTTP(S) URLs are supported.');
   if (url.username || url.password) throw new Error('URL credentials are blocked.');

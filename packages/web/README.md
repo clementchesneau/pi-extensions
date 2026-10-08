@@ -44,14 +44,16 @@ same name take precedence, even when empty. Only this file is read, never a proj
   a Context7 resolve followed by a read costs two calls of your quota.
 - **`web_fetch`** reads public HTTP(S) URLs only: no localhost or private network, no login or
   cookies, and no JavaScript execution, so a page that needs it may come back empty or partial.
-  It allows 4 redirects, 20 seconds and 4 MiB per URL, 20 MiB for a PDF.
+  It allows 4 redirects, 20 seconds and 4 MiB per URL, 20 MiB for a PDF; the several GitHub API
+  requests behind one URL share these limits.
 - **PDF**: the text is extracted locally with unpdf and marked by page, in a worker thread limited
   to 20 seconds and 512 MB of heap that stops when the call is cancelled. There is no OCR: a
   scanned PDF, or one whose fonts cannot be decoded, is reported as having no text, and a
   password-protected PDF is refused.
 - **Images**: PNG, JPEG, GIF and WebP reach the model as images when the current model accepts
   them; Pi resizes them before sending. The format comes from the file's signature, not the
-  declared type, and other formats are refused.
+  declared type; an image Pi cannot decode, such as a truncated file, and other formats are
+  refused.
 - **GitHub**: a repository gives its README and root files (a `github.com` path that is not a
   repository, such as an advisory, is read as an ordinary page), a `tree` URL lists that directory, a
   `blob` URL reads the raw file, and an issue or pull request gives its description and first 100
