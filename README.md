@@ -2,12 +2,13 @@
 
 Extensions for the [Pi coding agent](https://pi.dev). They let the agent delegate work to
 subagents, run shell commands in the background, ask you questions, search and read the web,
-check a web UI in a real browser, navigate TypeScript code and compact its context at a good
-moment. A dark theme with run timers and a denser footer completes the set.
+understand videos, check a web UI in a real browser, navigate TypeScript code and compact its
+context at a good moment. A dark theme with run timers and a denser footer completes the set.
 
 Each extension is its own npm package: install only the ones you want. They work alone and
 complement each other when loaded together. Apart from subagents, which runs child sessions
-with the models you choose, none of them calls a second model or depends on your AI provider.
+with the models you choose, and video's optional Gemini tool, none of them calls a second model
+or depends on your AI provider.
 
 ![Pi with Graphite UI: three subagents launched, a background task running, timer and counters above the editor](docs/images/graphite-running.png)
 
@@ -19,6 +20,7 @@ with the models you choose, none of them calls a second model or depends on your
 | [background-tasks](packages/background-tasks/README.md) | Runs non-interactive shell commands in the background, tracked by ID; `/ps` shows them with live logs | macOS or Linux with procps `ps` |
 | [ask-user](packages/ask-user/README.md) | Lets the agent ask you questions: single or multiple choice, free text, and a summary before sending | Interactive terminal |
 | [web](packages/web/README.md) | Brave web search, reading of pages, PDFs, images and GitHub URLs, and versioned library docs from Context7 | Brave and/or Context7 API key for search and docs |
+| [video](packages/video/README.md) | Understands videos from URLs and local files: transcripts, metadata and key frames, with optional Gemini analysis | yt-dlp and ffmpeg; whisper.cpp and a Gemini key optional |
 | [ui-check](packages/ui-check/README.md) | Headless Chromium the agent opens on demand to use a web UI, take screenshots and read console errors | Chromium installed through Playwright |
 | [code-intelligence](packages/code-intelligence/README.md) | TypeScript and JavaScript navigation: symbols, definition, references, hover, diagnostics | Nothing; the language server ships with it |
 | [session-compaction](packages/session-compaction/README.md) | Lets the agent compact its context from 60% usage, keeping notes it can reread afterwards | Nothing |
@@ -47,7 +49,7 @@ pi -e npm:@clement_chsn/pi-ask-user
 ```
 
 `pi list` shows your packages and `pi remove npm:@clement_chsn/pi-subagents` removes one.
-web and ui-check need a key or a browser download first: see their READMEs.
+web, ui-check and video need a key, a browser download or programs first: see their READMEs.
 
 ### Everything at once from Git
 

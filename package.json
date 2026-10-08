@@ -20,6 +20,7 @@
       "./packages/session-compaction/index.js",
       "./packages/web/index.js",
       "./packages/ui-check/index.js",
+      "./packages/video/index.js",
       "./packages/subagents/index.js",
       "./packages/background-tasks/index.js",
       "./packages/ask-user/index.js"

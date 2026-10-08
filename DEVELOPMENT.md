@@ -65,6 +65,11 @@ What some suites cover, and what they do not:
   tests, including cancellation and the time limit; binary bodies and header-dependent size limits
   go through a local HTTP server. The 512 MB heap limit is not exercised, and it does not bound
   pdf.js buffers held outside the heap. No multi-provider conversational test is claimed.
+- **video**: fake `yt-dlp`, `ffmpeg`, `ffprobe` and `whisper-cli` programs, put first on `PATH`
+  and driven by a scenario, record their arguments and cover subtitles, whisper, scene frames,
+  long videos, ranges, refusals and errors; a Gemini API double covers direct YouTube links,
+  uploads, processing, deletion and size limits. One test runs the real ffmpeg on a generated
+  video and is skipped without it. No real download, transcription or Gemini call is made.
 - **ui-check**: an ephemeral local HTTP server and a real Chromium cover interactions, viewport,
   viewport and component screenshots, diagnostics, UTF-8 truncation, private files, cancellation
   and reopening. The registration contract checks that the extension adds only its tools and the
@@ -158,7 +163,7 @@ pnpm -r publish --dry-run
 pnpm -r publish
 ```
 
-The dry run checks the ten packages; the root is private. `pnpm -r publish` publishes them with
+The dry run checks the eleven packages; the root is private. `pnpm -r publish` publishes them with
 public access. pnpm replaces `workspace:*` and `catalog:` with exact versions in the published
 manifests.
 

@@ -1,0 +1,40 @@
+{
+  "name": "@clement_chsn/pi-video",
+  "version": "0.1.0",
+  "description": "Video understanding for Pi: transcripts, metadata and key frames from video URLs and local files, with optional Gemini analysis.",
+  "license": "MIT",
+  "author": "Clément CHESNEAU",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clementchesneau/pi-extensions.git",
+    "directory": "packages/video"
+  },
+  "homepage": "https://github.com/clementchesneau/pi-extensions/tree/main/packages/video#readme",
+  "bugs": {
+    "url": "https://github.com/clementchesneau/pi-extensions/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "typebox": "*"
+  },
+  "dependencies": {
+    "@clement_chsn/pi-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typebox": "catalog:"
+  }
+}

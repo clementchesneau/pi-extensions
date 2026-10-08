@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createWebTools } from '../packages/web/index.js';
 import { createBrowserTools } from '../packages/ui-check/index.js';
+import { createVideoTools } from '../packages/video/index.js';
 import { createCodeNavTool } from '../packages/code-intelligence/index.js';
 import { createSubagentTools } from '../packages/subagents/tools.js';
 import backgroundTasks from '../packages/background-tasks/index.js';
@@ -22,6 +23,7 @@ const toolsByExtension = {
   'code-intelligence': [createCodeNavTool()],
   web: createWebTools(),
   'ui-check': createBrowserTools().tools,
+  video: createVideoTools({ gemini: {} }),
   subagents: createSubagentTools({ getManager: () => ({}) }),
   'background-tasks': registeredTools(backgroundTasks),
   'ask-user': registeredTools(askUser),

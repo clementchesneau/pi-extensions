@@ -42,8 +42,10 @@ test('every bare import of a package is declared by that package', async () => {
 });
 
 test('each extension package loads alone and registers its capabilities', async () => {
+  // An explicit empty key keeps video from reading the developer's real configuration file.
+  process.env.GEMINI_API_KEY ??= '';
   const extensionPackages = packages.filter(({ manifest }) => manifest.pi?.extensions?.length);
-  assert.equal(extensionPackages.length, 9);
+  assert.equal(extensionPackages.length, 10);
   for (const { directory, manifest } of extensionPackages) {
     for (const entry of manifest.pi.extensions) {
       const { default: extension } = await import(pathToFileURL(join(directory, entry)).href);
