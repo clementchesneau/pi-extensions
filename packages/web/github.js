@@ -86,8 +86,10 @@ async function apiGet(path, target, { signal, request, budget, optional = false 
     signal,
     headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
     maxBytes: budget.remaining,
+    maxRedirects: budget.redirects,
   });
   budget.remaining -= response.bytes?.length ?? Buffer.byteLength(response.body ?? '');
+  budget.redirects -= response.redirects ?? 0;
   if (optional && response.status === 404) return NOT_FOUND;
   if (response.status !== 200) throw apiError(response, target);
   try {
@@ -193,7 +195,7 @@ async function discussionPage(target, options) {
  * Reads a repository, directory, issue or pull request through GitHub's public API, without a token.
  * Undefined when a repository path turns out not to be one, so the caller reads the ordinary page.
  * @param {Exclude<GitHubTarget, { type: 'file' }>} target
- * @param {{ signal?: AbortSignal, request: Function, budget: { remaining: number } }} options
+ * @param {{ signal?: AbortSignal, request: Function, budget: { remaining: number, redirects: number } }} options
  *   `signal` and `budget` are shared by every request behind the URL, so together they keep its
  *   time and size limits.
  */

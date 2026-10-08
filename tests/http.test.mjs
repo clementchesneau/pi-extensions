@@ -186,6 +186,20 @@ test('real HTTP transport keeps binary bodies as bytes and sizes its limit by co
   );
 });
 
+test('reports how many redirects it followed, so callers can share one redirect limit', async () => {
+  let calls = 0;
+  const result = await publicGet(
+    'https://example.com/a',
+    { maxRedirects: 2 },
+    {
+      lookup: async () => [{ address: '93.184.215.14', family: 4 }],
+      send: async () => (++calls <= 2 ? answer('', 301, { location: `/hop${calls}` }) : answer('final')),
+    },
+  );
+  assert.equal(result.redirects, 2);
+  assert.equal(result.url, 'https://example.com/hop2');
+});
+
 test('follows relative public redirects and rejects HTTPS downgrades', async () => {
   let calls = 0;
   const result = await publicGet(

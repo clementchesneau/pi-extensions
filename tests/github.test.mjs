@@ -292,3 +292,24 @@ test('the requests behind one GitHub URL share its time limit', async () => {
     { name: 'TimeoutError' },
   );
 });
+
+test('the requests behind one GitHub URL share its 4 redirects, including the fallback to the page', async () => {
+  const listing = json([{ name: 'a.js', path: 'a.js', type: 'file', size: 1 }]);
+  const allowed = [];
+  const request = async (url, options) => {
+    allowed.push(options.maxRedirects);
+    if (url.endsWith('/contents/')) return { url, ...listing, redirects: 3 };
+    return { status: 404, headers: {}, body: '', redirects: 1 };
+  };
+  await fetchPage({ url: 'https://github.com/acme/widgets' }, { request });
+  assert.deepEqual(allowed, [4, 1]);
+
+  allowed.length = 0;
+  const moved = async (url, options) => {
+    allowed.push(options.maxRedirects);
+    if (url.startsWith('https://api.github.com/')) return { status: 404, headers: {}, body: '', redirects: 3 };
+    return { url, status: 200, headers: { 'content-type': 'text/plain' }, body: 'Ordinary page' };
+  };
+  await fetchPage({ url: 'https://github.com/advisories/GHSA-x' }, { request: moved });
+  assert.deepEqual(allowed, [4, 1]);
+});

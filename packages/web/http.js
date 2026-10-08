@@ -157,7 +157,7 @@ export async function publicGet(input, options = {}, dependencies = {}) {
       signal,
       maxBytes: options.maxBytes ?? 4 * 1024 * 1024,
     });
-    if (!REDIRECTS.has(response.status)) return { ...response, url: url.href };
+    if (!REDIRECTS.has(response.status)) return { ...response, url: url.href, redirects };
     if (redirects >= maxRedirects) throw new Error('Redirect limit reached.');
     url = redirectTarget(url, response);
   }

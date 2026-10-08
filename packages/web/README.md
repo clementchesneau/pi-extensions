@@ -45,7 +45,7 @@ same name take precedence, even when empty. Only this file is read, never a proj
 - **`web_fetch`** reads public HTTP(S) URLs only: no localhost or private network, no login or
   cookies, and no JavaScript execution, so a page that needs it may come back empty or partial.
   It allows 4 redirects, 20 seconds and 4 MiB per URL, 20 MiB for a PDF; the several GitHub API
-  requests behind one URL share these limits.
+  requests behind one URL, and a fallback to the ordinary page, share these limits.
 - **PDF**: the text is extracted locally with unpdf and marked by page, in a worker thread limited
   to 20 seconds and 512 MB of heap that stops when the call is cancelled. There is no OCR: a
   scanned PDF, or one whose fonts cannot be decoded, is reported as having no text, and a

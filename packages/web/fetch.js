@@ -13,6 +13,7 @@ const PDF_TYPES = ['application/pdf', 'application/x-pdf'];
 const BINARY_TYPES = ['application/octet-stream', 'binary/octet-stream'];
 const PAGE_LIMIT = 4 * 1024 * 1024;
 const TIME_LIMIT_MS = 20_000;
+const MAX_REDIRECTS = 4;
 const DOCUMENT_LIMIT = 20 * 1024 * 1024;
 
 const mediaType = headers =>
@@ -90,13 +91,16 @@ export async function fetchPage({ url }, { signal, request = publicGet, timeLimi
   checkedUrl(url);
   // One deadline for every request behind the URL; PDF extraction keeps its own limit.
   const deadline = AbortSignal.any([AbortSignal.timeout(timeLimitMs), ...(signal ? [signal] : [])]);
+  // Bytes and redirects shared the same way; a fallback to the ordinary page inherits what is left.
+  const budget = { remaining: PAGE_LIMIT, redirects: MAX_REDIRECTS };
   const github = githubTarget(url);
   if (github && github.type !== 'file') {
-    const page = await fetchGitHub(github, { signal: deadline, request, budget: { remaining: PAGE_LIMIT } });
+    const page = await fetchGitHub(github, { signal: deadline, request, budget });
     if (page) return page;
   }
   const response = await request(github?.type === 'file' ? github.rawUrl : url, {
     signal: deadline,
+    maxRedirects: budget.redirects,
     headers: {
       Accept: `text/html, text/plain, text/markdown, application/json, application/pdf, ${IMAGE_TYPES.join(', ')}`,
     },
