@@ -16,6 +16,14 @@ const BASE = [
 const DOWNLOAD_FORMAT =
   'bv*[height<=480][vcodec^=avc1]+ba[ext=m4a]/b[height<=480][ext=mp4]/bv*[height<=480]+ba/b[height<=480]/wv*+ba/w';
 const STREAM_FORMAT = 'bv*[height<=480][vcodec^=avc1]/b[height<=480][ext=mp4]/bv*[height<=480]/b[height<=480]/wv*/w';
+// A part is re-encoded so that it starts exactly at `from`: a copy starts at the keyframe before,
+// and a WebM or Matroska file keeps those earlier frames. The encoder options keep a VP9
+// re-encode, for WebM, about as fast as H.264; other encoders ignore them.
+const EXACT_PART = [
+  '--force-keyframes-at-cuts',
+  '--downloader-args',
+  'ffmpeg_o:-deadline realtime -cpu-used 8 -row-mt 1',
+];
 
 function failure(stderr) {
   const lines = stderr.trim().split('\n');
@@ -64,7 +72,7 @@ export async function readInfo(url, signal) {
  */
 export async function downloadVideo(url, directory, span, signal) {
   const args = ['-f', DOWNLOAD_FORMAT, '--merge-output-format', 'mp4', '--print', 'after_move:filepath'];
-  if (span) args.push('--download-sections', `*${span.from}-${span.to}`);
+  if (span) args.push('--download-sections', `*${span.from}-${span.to}`, ...EXACT_PART);
   const output = await ytdlp([...args, '-o', join(directory, 'video.%(ext)s'), url], signal);
   const path = output.trim().split('\n').at(-1);
   if (!path) throw new Error('yt-dlp did not report the downloaded file.');

@@ -78,7 +78,8 @@ GEMINI_VIDEO_MODEL=gemini-3.5-flash-lite
 - **Downloads** are at most 480 pixels high, or the smallest format a site offers. yt-dlp runs
   without your yt-dlp configuration and never uses browser cookies, so videos that require
   logging in fail with an explanation: Instagram often does, Vimeo always does. Sites change
-  often; when an extractor fails, `brew upgrade yt-dlp` usually fixes it.
+  often; when an extractor fails, `brew upgrade yt-dlp` usually fixes it. A part requested with
+  `from`/`to` is re-encoded as it downloads, so that it starts exactly at `from`.
 - **Long videos**: over 30 minutes, the overview uses subtitles only and frames evenly spaced
   through the stream, without downloading. Passing `from`/`to` downloads that part, finds its
   scene changes and, when the video has no subtitles, transcribes it with whisper. Reaching a part deep into a long YouTube video is slow on YouTube's side: about

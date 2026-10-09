@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createVideoTools } from '../packages/video/index.js';
 import { VideoLibrary } from '../packages/video/library.js';
-import { info, publicHost, setup, URL_SOURCE, VISION } from './fixtures/video-setup.mjs';
+import { FAKES, info, publicHost, setup, URL_SOURCE, VISION } from './fixtures/video-setup.mjs';
 
 const images = result => result.content.filter(block => block.type === 'image');
 const labels = result =>
@@ -359,6 +359,24 @@ test('failed subtitles and a failed whisper run become notes with the useful err
   assert.equal(images(result).length, 8);
 });
 
+test('a missing whisper-cli becomes a note with the command to install it', async t => {
+  // Every program but whisper-cli, and node for the fakes themselves.
+  const partial = await mkdtemp(join(tmpdir(), 'pi-video-no-whisper-'));
+  t.after(() => rm(partial, { recursive: true, force: true }));
+  for (const program of ['yt-dlp', 'ffmpeg', 'ffprobe']) await symlink(join(FAKES, program), join(partial, program));
+  await symlink(process.execPath, join(partial, 'node'));
+  const bare = info({ subtitles: {}, automatic_captions: {} });
+  const { tools } = await setup(
+    t,
+    { info: bare, probe: AUDIO_PROBE },
+    { config: { WHISPER_MODEL: '/models/ggml.bin' }, path: partial },
+  );
+  process.env.PATH = partial;
+  const result = await tools.video_overview.execute('1', { source: URL_SOURCE }, undefined, undefined, VISION);
+  assert.match(result.content[0].text, /No transcript: whisper-cli is not installed.*brew install whisper\.cpp/);
+  assert.equal(images(result).length, 8);
+});
+
 test('playlists, channels and live streams are refused, and metadata never expands a playlist', async t => {
   const playlist = await setup(t, { info: { _type: 'playlist', title: 'Uploads' } });
   await assert.rejects(
@@ -456,6 +474,65 @@ test('parallel calls on one source share its metadata and download', async t => 
   const ytdlp = (await calls()).filter(call => call.program === 'yt-dlp');
   assert.equal(ytdlp.filter(call => call.args.includes('-J')).length, 1);
   assert.equal(ytdlp.filter(call => call.args.includes('--print')).length, 1);
+});
+
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+test('a cancelled call stops waiting at once, while the other call keeps the shared download', async t => {
+  for (const cancelled of [0, 1]) {
+    await t.test(`cancelling call ${cancelled + 1}`, async st => {
+      const { tools, calls } = await setup(st, { info: info(), downloadDelayMs: 3000 });
+      const controller = new AbortController();
+      const signals = [undefined, undefined];
+      signals[cancelled] = controller.signal;
+      const runs = [
+        tools.video_overview.execute('1', { source: URL_SOURCE }, signals[0], undefined, VISION),
+        tools.video_frames.execute('2', { source: URL_SOURCE, timestamps: ['0:30'] }, signals[1], undefined, VISION),
+      ];
+      await pause(600);
+      const started = Date.now();
+      controller.abort();
+      const stopped = runs[cancelled].then(
+        () => assert.fail('the cancelled call completed'),
+        error => ({ name: error.name, after: Date.now() - started }),
+      );
+      const [cancelledRun, other] = await Promise.all([stopped, runs[1 - cancelled]]);
+      assert.equal(cancelledRun.name, 'AbortError');
+      assert.ok(cancelledRun.after < 1000, `the cancelled call waited ${cancelledRun.after} ms`);
+      assert.equal(images(other).length, cancelled === 0 ? 1 : 8);
+      const downloads = (await calls()).filter(call => call.program === 'yt-dlp' && call.args.includes('--print'));
+      assert.equal(downloads.length, 1);
+    });
+  }
+});
+
+test('a shared download stops once every call waiting for it is cancelled', async t => {
+  // Without subtitles, the download is the last yt-dlp run: the one whose process is recorded.
+  const bare = info({ subtitles: {}, automatic_captions: {} });
+  const { tools, directory } = await setup(t, { info: bare, downloadDelayMs: 5000, pidProgram: 'yt-dlp' });
+  const pidFile = join(directory, 'yt-dlp.pid');
+  const scenarioFile = process.env.PI_VIDEO_FAKE;
+  await writeFile(scenarioFile, JSON.stringify({ ...JSON.parse(await readFile(scenarioFile, 'utf8')), pidFile }));
+  const controllers = [new AbortController(), new AbortController()];
+  const runs = [
+    tools.video_overview.execute('1', { source: URL_SOURCE }, controllers[0].signal, undefined, VISION),
+    tools.video_frames.execute(
+      '2',
+      { source: URL_SOURCE, timestamps: ['0:30'] },
+      controllers[1].signal,
+      undefined,
+      VISION,
+    ),
+  ];
+  await pause(600);
+  const pid = Number(await readFile(pidFile, 'utf8'));
+  for (const [index, controller] of controllers.entries()) {
+    assert.doesNotThrow(() => process.kill(pid, 0), 'the download runs while a call waits for it');
+    controller.abort();
+    await assert.rejects(runs[index], { name: 'AbortError' });
+    await pause(100);
+  }
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
 });
 
 test('a text-only model with subtitles downloads nothing and announces no download', async t => {

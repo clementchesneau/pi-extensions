@@ -164,7 +164,7 @@ export async function framesAt(library, params, { signal, onUpdate, model, cwd }
   }
   const long = entry.duration > LONG_VIDEO_SECONDS;
   const media =
-    (await library.downloaded(entry)) ??
+    (await library.downloaded(entry, signal)) ??
     (long ? await library.stream(entry, signal) : await library.media(entry, undefined, signal, downloading(onUpdate)));
   progress(onUpdate, 'Extracting frames…');
   const jobs = await frameJobs(library, media, { times, width: DETAIL_WIDTH }, signal);

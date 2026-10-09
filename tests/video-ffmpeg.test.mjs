@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createVideoTools } from '../packages/video/index.js';
 import { VideoLibrary } from '../packages/video/library.js';
 import { encodeClip } from '../packages/video/media.js';
+import { downloadVideo } from '../packages/video/ytdlp.js';
 
-const installed = program => {
+const installed = (program, flag = '-version') => {
   try {
-    execFileSync(program, ['-version'], { stdio: 'ignore' });
+    execFileSync(program, [flag], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -104,5 +106,68 @@ test(
       clip,
     ]).toString();
     assert.doesNotMatch(tags, /location/);
+  },
+);
+
+/** Serves one file over HTTP with byte ranges, as video hosts do, so ffmpeg can seek in it. */
+async function serveFile(t, path, type) {
+  const data = await readFile(path);
+  const server = createServer((request, response) => {
+    const range = /bytes=(\d+)-(\d*)/.exec(request.headers.range ?? '');
+    const start = range ? Number(range[1]) : 0;
+    const end = range?.[2] ? Number(range[2]) : data.length - 1;
+    response.writeHead(range ? 206 : 200, {
+      'content-type': type,
+      'accept-ranges': 'bytes',
+      'content-length': end - start + 1,
+      ...(range ? { 'content-range': `bytes ${start}-${end}/${data.length}` } : {}),
+    });
+    response.end(request.method === 'HEAD' ? undefined : data.subarray(start, end + 1));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+  t.after(() => server.close());
+  return `http://127.0.0.1:${/** @type {import('node:net').AddressInfo} */ (server.address()).port}/video`;
+}
+
+test(
+  'with the real yt-dlp, a downloaded part starts exactly at from, even in a container without edit lists',
+  {
+    skip: !(installed('ffmpeg') && installed('yt-dlp', '--version')) && 'yt-dlp and ffmpeg are not installed',
+  },
+  async t => {
+    const directory = await mkdtemp(join(tmpdir(), 'pi-video-part-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    // Red then blue, with a single keyframe at 0, in Matroska: a copy of 4-5 s would start with red.
+    const colors = ['red', 'blue'].flatMap(color => ['-f', 'lavfi', '-i', `color=c=${color}:s=320x240:d=4:r=25`]);
+    const source = join(directory, 'source.mkv');
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      ...colors,
+      '-filter_complex',
+      '[0][1]concat=n=2:v=1:a=0',
+      '-g',
+      '1000',
+      source,
+    ]);
+    const url = await serveFile(t, source, 'video/x-matroska');
+    const part = await downloadVideo(url, directory, { from: 4, to: 5 });
+    const raw = execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-i',
+      part,
+      '-vf',
+      'scale=1:1',
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgb24',
+      '-',
+    ]);
+    const frames = raw.length / 3;
+    assert.ok(frames >= 24 && frames <= 26, `${frames} frames`);
+    for (let index = 0; index < raw.length; index += 3)
+      assert.ok(raw[index] < 80 && raw[index + 2] > 160, `frame ${index / 3} is not blue`);
   },
 );

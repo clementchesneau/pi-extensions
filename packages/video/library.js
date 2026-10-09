@@ -4,6 +4,7 @@ import { basename, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkedUrl, publicAddresses } from '@clement_chsn/pi-shared/public-url';
 import { probe } from './media.js';
+import { SharedWork } from './shared-work.js';
 import { parseCaptions } from './transcript.js';
 import { captionTrack, downloadCaptions, downloadVideo, readInfo, streamUrl } from './ytdlp.js';
 
@@ -59,6 +60,7 @@ function localPath(source, cwd) {
   return resolvePath(cwd ?? process.cwd(), path);
 }
 
+/** @returns {Promise<VideoEntry>} */
 async function fileEntry(path, signal) {
   const info = await stat(path).catch(() => undefined);
   if (!info?.isFile()) throw new Error(`No video file at ${path}.`);
@@ -77,6 +79,7 @@ async function fileEntry(path, signal) {
   };
 }
 
+/** @returns {VideoEntry} */
 function urlEntry(url, info) {
   return {
     kind: 'url',
@@ -99,8 +102,7 @@ function urlEntry(url, info) {
  */
 export class VideoLibrary {
   #directory;
-  #cache = new Map();
-  #streams = new Map();
+  #work;
   #count = 0;
 
   /**
@@ -109,7 +111,8 @@ export class VideoLibrary {
   constructor({ tmp = tmpdir(), resolve, now = Date.now } = {}) {
     this.tmp = tmp;
     this.resolve = resolve;
-    this.now = now;
+    // Metadata, downloads and streams are shared by parallel calls on the same video.
+    this.#work = new SharedWork({ now });
   }
 
   /** Removes the directories of this user's sessions whose process is gone; never fails. */
@@ -148,20 +151,9 @@ export class VideoLibrary {
   async close() {
     const pending = this.#directory;
     this.#directory = undefined;
-    this.#cache.clear();
-    this.#streams.clear();
+    this.#work.clear();
     const directory = await pending?.catch(() => undefined);
     if (directory) await rm(directory, { recursive: true, force: true });
-  }
-
-  /** Runs `load` once per key; a failure is not kept, so a later call retries. */
-  #once(key, load) {
-    if (!this.#cache.has(key)) {
-      const pending = load();
-      this.#cache.set(key, pending);
-      pending.catch(() => this.#cache.delete(key));
-    }
-    return this.#cache.get(key);
   }
 
   /**
@@ -172,13 +164,14 @@ export class VideoLibrary {
   entry(source, { cwd, signal } = {}) {
     if (!/^[a-z][a-z\d+.-]*:/i.test(source) || source.startsWith('file:')) {
       const path = localPath(source, cwd);
-      return this.#once(`file:${path}`, () => fileEntry(path, signal));
+      return this.#work.run(`file:${path}`, shared => fileEntry(path, shared), signal);
     }
     const url = checkedUrl(source).href;
-    return this.#once(`url:${url}`, async () => {
-      await publicAddresses(new URL(url), { resolve: this.resolve, signal });
-      return urlEntry(url, await readInfo(url, signal));
-    });
+    const load = async shared => {
+      await publicAddresses(new URL(url), { resolve: this.resolve, signal: shared });
+      return urlEntry(url, await readInfo(url, shared));
+    };
+    return this.#work.run(`url:${url}`, load, signal);
   }
 
   /**
@@ -189,38 +182,36 @@ export class VideoLibrary {
   media(entry, span, signal, onDownload) {
     if (entry.kind === 'file') return Promise.resolve({ input: entry.path, offset: 0 });
     const key = `media:${entry.key}:${span ? `${span.from}-${span.to}` : 'all'}`;
-    return this.#once(key, async () => {
+    const load = async shared => {
       onDownload?.();
-      const path = await downloadVideo(entry.url, await this.workspace('video'), span, signal);
+      const path = await downloadVideo(entry.url, await this.workspace('video'), span, shared);
       return { input: path, offset: span?.from ?? 0 };
-    });
+    };
+    return this.#work.run(key, load, signal);
   }
 
-  /** The whole video already downloaded in this session, if any. */
-  downloaded(entry) {
-    return entry.kind === 'file' ? this.media(entry) : this.#cache.get(`media:${entry.key}:all`);
+  /** The whole video downloaded, or being downloaded, in this session, if any. */
+  downloaded(entry, signal) {
+    return entry.kind === 'file' ? this.media(entry) : this.#work.find(`media:${entry.key}:all`, signal);
   }
 
   /** A stream of the video read in place, for frames of a long video that is not downloaded. */
   stream(entry, signal) {
-    const cached = this.#streams.get(entry.key);
-    if (cached && this.now() - cached.at < STREAM_LIFETIME_MS) return cached.pending;
-    const pending = (async () => {
-      const url = await streamUrl(entry.url, signal);
-      await publicAddresses(checkedUrl(url), { resolve: this.resolve, signal });
+    const load = async shared => {
+      const url = await streamUrl(entry.url, shared);
+      await publicAddresses(checkedUrl(url), { resolve: this.resolve, signal: shared });
       return { input: url, offset: 0 };
-    })();
-    this.#streams.set(entry.key, { pending, at: this.now() });
-    pending.catch(() => this.#streams.delete(entry.key));
-    return pending;
+    };
+    return this.#work.run(`stream:${entry.key}`, load, signal, { maxAgeMs: STREAM_LIFETIME_MS });
   }
 
   /** Cues of the chosen caption track, or undefined when there is none. */
   captions(entry, signal) {
     if (!entry.track) return Promise.resolve(undefined);
-    return this.#once(`captions:${entry.key}`, async () => {
-      const text = await downloadCaptions(entry.url, entry.track, await this.workspace('captions'), signal);
+    const load = async shared => {
+      const text = await downloadCaptions(entry.url, entry.track, await this.workspace('captions'), shared);
       return text ? parseCaptions(text, { rolling: entry.track.automatic }) : undefined;
-    });
+    };
+    return this.#work.run(`captions:${entry.key}`, load, signal);
   }
 }

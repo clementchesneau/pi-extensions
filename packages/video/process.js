@@ -4,10 +4,18 @@ import { basename } from 'node:path';
 const TIME_LIMIT_MS = 10 * 60_000;
 const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 
+const INSTALL = {
+  'yt-dlp': 'brew install yt-dlp (macOS) or see https://github.com/yt-dlp/yt-dlp#installation',
+  ffmpeg: 'brew install ffmpeg (macOS) or your package manager',
+  ffprobe: 'brew install ffmpeg (macOS) or your package manager',
+  'whisper-cli': 'brew install whisper.cpp (macOS) or see https://github.com/ggml-org/whisper.cpp',
+};
+
+/** A program that is not installed, with the command to install it wherever the error is reported. */
 export class MissingProgramError extends Error {
   /** @param {string} program */
   constructor(program) {
-    super(`${program} is not installed or not on PATH.`);
+    super(`${program} is not installed or not on PATH. Install it with ${INSTALL[program] ?? 'your package manager'}.`);
     this.program = program;
   }
 }

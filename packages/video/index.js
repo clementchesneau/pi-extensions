@@ -4,14 +4,7 @@ import { VideoLibrary } from './library.js';
 import { askGemini } from './gemini.js';
 import { describeVideo, framesAt } from './overview.js';
 import { askResult, framesResult, overviewResult } from './output.js';
-import { MissingProgramError } from './process.js';
 
-const INSTALL = {
-  'yt-dlp': 'brew install yt-dlp (macOS) or see https://github.com/yt-dlp/yt-dlp#installation',
-  ffmpeg: 'brew install ffmpeg (macOS) or your package manager',
-  ffprobe: 'brew install ffmpeg (macOS) or your package manager',
-  'whisper-cli': 'brew install whisper.cpp (macOS) or see https://github.com/ggml-org/whisper.cpp',
-};
 const SERVICES = { WHISPER_MODEL: 'whisper.cpp', GEMINI_API_KEY: 'Gemini', GEMINI_VIDEO_MODEL: 'Gemini' };
 
 const source = Type.String({
@@ -24,17 +17,6 @@ const timestamp = description => Type.Optional(Type.String({ minLength: 1, maxLe
 
 /** @param {string} name */
 const defaultReadConfig = name => readUserConfigValue({ variable: name, service: SERVICES[name] ?? name });
-
-async function withInstallHint(operation) {
-  try {
-    return await operation();
-  } catch (error) {
-    if (!(error instanceof MissingProgramError)) throw error;
-    throw new Error(`${error.message} Install it with ${INSTALL[error.program] ?? 'your package manager'}.`, {
-      cause: error,
-    });
-  }
-}
 
 function overviewTool(library, readConfig) {
   return {
@@ -55,17 +37,16 @@ function overviewTool(library, readConfig) {
       },
       { additionalProperties: false },
     ),
-    execute: (_id, params, signal, onUpdate, ctx) =>
-      withInstallHint(async () => {
-        const overview = await describeVideo(library, params, {
-          signal,
-          onUpdate,
-          model: ctx?.model,
-          cwd: ctx?.cwd,
-          readConfig,
-        });
-        return overviewResult(library, overview);
-      }),
+    execute: async (_id, params, signal, onUpdate, ctx) => {
+      const overview = await describeVideo(library, params, {
+        signal,
+        onUpdate,
+        model: ctx?.model,
+        cwd: ctx?.cwd,
+        readConfig,
+      });
+      return overviewResult(library, overview);
+    },
   };
 }
 
@@ -90,10 +71,8 @@ function framesTool(library) {
       },
       { additionalProperties: false },
     ),
-    execute: (_id, params, signal, onUpdate, ctx) =>
-      withInstallHint(async () =>
-        framesResult(library, await framesAt(library, params, { signal, onUpdate, model: ctx?.model, cwd: ctx?.cwd })),
-      ),
+    execute: async (_id, params, signal, onUpdate, ctx) =>
+      framesResult(library, await framesAt(library, params, { signal, onUpdate, model: ctx?.model, cwd: ctx?.cwd })),
   };
 }
 
@@ -117,12 +96,11 @@ function askTool(library, readConfig, gemini) {
       },
       { additionalProperties: false },
     ),
-    execute: (_id, params, signal, onUpdate, ctx) =>
-      withInstallHint(async () => {
-        onUpdate?.({ content: [{ type: 'text', text: 'Asking Gemini about the video…' }] });
-        const reply = await askGemini(library, params, { signal, onUpdate, cwd: ctx?.cwd, readConfig, gemini });
-        return askResult(library, reply);
-      }),
+    execute: async (_id, params, signal, onUpdate, ctx) => {
+      onUpdate?.({ content: [{ type: 'text', text: 'Asking Gemini about the video…' }] });
+      const reply = await askGemini(library, params, { signal, onUpdate, cwd: ctx?.cwd, readConfig, gemini });
+      return askResult(library, reply);
+    },
   };
 }
 
