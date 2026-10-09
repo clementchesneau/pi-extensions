@@ -199,6 +199,22 @@ test('the image type sent to the model comes from the file signature, not the de
   );
 });
 
+test('reads images served as generic binary content by their signature, within the page limit', async () => {
+  for (const contentType of ['application/octet-stream', 'binary/octet-stream']) {
+    const page = await fetchPage(
+      { url: 'https://example.com/download' },
+      { request: imageResponse(contentType, IMAGES['image/png']) },
+    );
+    assert.deepEqual(page.image, { data: IMAGES['image/png'].toString('base64'), mimeType: 'image/png' });
+  }
+  // Generic binary content may be a PDF, so it is read up to 20 MiB; only a PDF keeps that limit.
+  const large = Buffer.concat([IMAGES['image/png'], Buffer.alloc(4 * 1024 * 1024)]);
+  await assert.rejects(
+    fetchPage({ url: 'https://example.com/download' }, { request: imageResponse('application/octet-stream', large) }),
+    /exceeds the download size limit/,
+  );
+});
+
 test('an image that cannot be decoded is refused rather than sent to the model', async () => {
   const truncated = IMAGES['image/png'].subarray(0, 10);
   await assert.rejects(

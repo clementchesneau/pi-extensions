@@ -3,7 +3,7 @@ import { parseHTML } from 'linkedom';
 import TurndownService from 'turndown';
 import { fetchGitHub, githubTarget } from './github.js';
 import { checkedUrl, publicGet } from './http.js';
-import { IMAGE_TYPES, imagePage } from './image.js';
+import { IMAGE_TYPES, imagePage, imageType } from './image.js';
 import { hasPdfSignature, pdfPage } from './pdf.js';
 import { publicResultUrl } from './search.js';
 
@@ -54,6 +54,23 @@ function htmlPage(body, finalUrl) {
   return { title, extraction, markdown };
 }
 
+const unsupported = type =>
+  new Error(
+    `Unsupported page content type: ${type || 'missing'}. Supports HTML, plain text, Markdown, JSON, PDF and images, not browser rendering.`,
+  );
+
+/**
+ * Content served as generic binary, as servers often send PDFs and images: only its signature is
+ * trusted. It is read up to the PDF limit, which only a PDF keeps.
+ */
+function binaryPage(response, type, signal) {
+  const { bytes, url } = response;
+  if (hasPdfSignature(bytes)) return pdfPage(bytes, url, { signal });
+  if (!imageType(bytes)) throw unsupported(type);
+  if (bytes.length > PAGE_LIMIT) throw new Error('Response exceeds the download size limit.');
+  return imagePage(bytes, type, url);
+}
+
 async function readablePage(response, type, signal) {
   const finalUrl = response.url;
   const isJson = type === 'application/json' || /^application\/[\w.+-]+\+json$/.test(type);
@@ -63,13 +80,9 @@ async function readablePage(response, type, signal) {
   }
   if (type === 'text/html') return htmlPage(response.body, finalUrl);
   if (type.startsWith('image/')) return imagePage(response.bytes, type, finalUrl);
-  // Servers often send PDFs as generic binary content; only the file signature is trusted then.
-  if (PDF_TYPES.includes(type) || (BINARY_TYPES.includes(type) && hasPdfSignature(response.bytes))) {
-    return pdfPage(response.bytes, finalUrl, { signal });
-  }
-  throw new Error(
-    `Unsupported page content type: ${type || 'missing'}. Supports HTML, plain text, Markdown, JSON, PDF and images, not browser rendering.`,
-  );
+  if (PDF_TYPES.includes(type)) return pdfPage(response.bytes, finalUrl, { signal });
+  if (BINARY_TYPES.includes(type)) return binaryPage(response, type, signal);
+  throw unsupported(type);
 }
 
 function pageError(status, github) {
