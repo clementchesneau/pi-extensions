@@ -18,6 +18,11 @@ export function assertPublicAddress(address) {
   // ranges include private, loopback, link-local, multicast and transition ranges.
   if (!ipaddr.isValid(address)) throw new Error('Non-public network address blocked.');
   const parsed = ipaddr.process(address);
+  // The standard NAT64 prefix embeds an IPv4 destination: validate that destination,
+  // not the translation range. Other IPv6 transition ranges remain blocked.
+  if (parsed.kind() === 'ipv6' && parsed.match(ipaddr.parse('64:ff9b::'), 96)) {
+    return assertPublicAddress(parsed.toByteArray().slice(-4).join('.'));
+  }
   const globalV6 = parsed.kind() !== 'ipv6' || parsed.match(ipaddr.parse('2000::'), 3);
   if (parsed.range() !== 'unicast' || !globalV6) {
     throw new Error('Non-public network address blocked.');
