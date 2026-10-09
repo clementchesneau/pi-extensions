@@ -1,6 +1,6 @@
 {
   "name": "@clement_chsn/pi-ui-check",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "On-demand Chromium browser for Pi agents: interactions, screenshots and UI diagnostics.",
   "license": "MIT",
   "author": "Clément CHESNEAU",

@@ -1,6 +1,6 @@
 {
   "name": "@clement_chsn/pi-shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Internal helpers for the @clement_chsn Pi extensions; no stability guarantee outside them.",
   "license": "MIT",
   "author": "Clément CHESNEAU",

@@ -1,6 +1,6 @@
 {
   "name": "@clement_chsn/pi-web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Brave web search, local reading of pages, PDFs, images and GitHub URLs, and versioned Context7 documentation for Pi.",
   "license": "MIT",
   "author": "Clément CHESNEAU",
