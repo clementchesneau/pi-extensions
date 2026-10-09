@@ -108,7 +108,11 @@ test('asks for PDFs and allows them 20 MiB while other pages keep the 4 MiB limi
   );
   assert.ok(options.headers.Accept.includes('application/pdf'));
   assert.equal(options.maxBytes({ 'content-type': 'application/pdf' }), 20 * 1024 * 1024);
-  assert.equal(options.maxBytes({ 'content-type': 'application/octet-stream' }), 20 * 1024 * 1024);
+  // Generic binary content may be a PDF until its first bytes say otherwise.
+  const binary = { 'content-type': 'application/octet-stream' };
+  assert.equal(options.maxBytes(binary), 20 * 1024 * 1024);
+  assert.equal(options.maxBytes(binary, Buffer.from('%PDF-1.7\n%')), 20 * 1024 * 1024);
+  assert.equal(options.maxBytes(binary, IMAGES['image/png'].subarray(0, 16)), 4 * 1024 * 1024);
   assert.equal(options.maxBytes({ 'content-type': 'text/html; charset=utf-8' }), 4 * 1024 * 1024);
   assert.equal(options.maxBytes({}), 4 * 1024 * 1024);
 });
@@ -199,7 +203,7 @@ test('the image type sent to the model comes from the file signature, not the de
   );
 });
 
-test('reads images served as generic binary content by their signature, within the page limit', async () => {
+test('reads images served as generic binary content by their signature', async () => {
   for (const contentType of ['application/octet-stream', 'binary/octet-stream']) {
     const page = await fetchPage(
       { url: 'https://example.com/download' },
@@ -207,12 +211,6 @@ test('reads images served as generic binary content by their signature, within t
     );
     assert.deepEqual(page.image, { data: IMAGES['image/png'].toString('base64'), mimeType: 'image/png' });
   }
-  // Generic binary content may be a PDF, so it is read up to 20 MiB; only a PDF keeps that limit.
-  const large = Buffer.concat([IMAGES['image/png'], Buffer.alloc(4 * 1024 * 1024)]);
-  await assert.rejects(
-    fetchPage({ url: 'https://example.com/download' }, { request: imageResponse('application/octet-stream', large) }),
-    /exceeds the download size limit/,
-  );
 });
 
 test('an image that cannot be decoded is refused rather than sent to the model', async () => {

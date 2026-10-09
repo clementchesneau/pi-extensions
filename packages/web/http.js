@@ -21,15 +21,26 @@ function decodedBody(bytes, headers) {
   }
 }
 
-function collectBody(response, maxBytes) {
+// Enough of the body for a file signature, which a size limit may depend on.
+const HEAD_BYTES = 16;
+
+/**
+ * @param {number} limit the limit before the first bytes are known
+ * @param {(head: Buffer) => number} limitFor the limit once they are
+ */
+function collectBody(response, limit, limitFor) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
+    let sniffed = false;
     response.on('data', chunk => {
+      chunks.push(chunk);
       bytes += chunk.length;
-      if (bytes > maxBytes) {
-        response.destroy(new Error('Response exceeds the download size limit.'));
-      } else chunks.push(chunk);
+      if (!sniffed && bytes >= HEAD_BYTES) {
+        sniffed = true;
+        limit = limitFor(Buffer.concat(chunks).subarray(0, HEAD_BYTES));
+      }
+      if (bytes > limit) response.destroy(new Error('Response exceeds the download size limit.'));
     });
     response.on('error', reject);
     response.on('end', () => resolve(Buffer.concat(chunks)));
@@ -41,8 +52,10 @@ function collectBody(response, maxBytes) {
 /**
  * @param {URL} url
  * @param {{ address: { address: string, family: number }, headers?: Record<string, string>, signal?: AbortSignal,
- *   maxBytes: number | ((headers: import('node:http').IncomingHttpHeaders) => number) }} options
- *   `maxBytes` may depend on the response headers, for example a larger limit for PDFs.
+ *   maxBytes: number | ((headers: import('node:http').IncomingHttpHeaders, head?: Buffer) => number) }} options
+ *   `maxBytes` may depend on the response headers, for example a larger limit for PDFs, and on
+ *   `head`, the first bytes of the body, for a file signature. Without `head`, it bounds every body
+ *   the headers allow.
  * @returns {Promise<{ status: number, headers: import('node:http').IncomingHttpHeaders, body: string, bytes?: Buffer }>}
  *   `bytes` is the raw body of a successful response; `body` is its decoded text, empty for binary types.
  */
@@ -73,13 +86,14 @@ export function requestPinned(url, { address, headers = {}, signal, maxBytes }) 
           reject(new Error('Unsupported compressed Content-Encoding; expected identity.'));
           return;
         }
-        const limit = typeof maxBytes === 'function' ? maxBytes(responseHeaders) : maxBytes;
+        const limitFor = head => (typeof maxBytes === 'function' ? maxBytes(responseHeaders, head) : maxBytes);
+        const limit = limitFor();
         if (Number(response.headers['content-length']) > limit) {
           response.destroy();
           reject(new Error('Response exceeds the download size limit.'));
           return;
         }
-        collectBody(response, limit)
+        collectBody(response, limit, limitFor)
           .then(bytes =>
             resolve({ status, headers: responseHeaders, body: decodedBody(bytes, responseHeaders), bytes }),
           )

@@ -186,6 +186,28 @@ test('real HTTP transport keeps binary bodies as bytes and sizes its limit by co
   );
 });
 
+test('real HTTP transport lets a limit depend on the first bytes of the body, such as a file signature', async t => {
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    if (req.url === '/document') {
+      // The signature arrives split across chunks.
+      res.write('%P');
+      setTimeout(() => res.end(Buffer.concat([Buffer.from('DF-'), Buffer.alloc(75)])), 20);
+    } else res.end(Buffer.alloc(80));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://pinning-test.invalid:${server.address().port}`;
+  const address = { address: '127.0.0.1', family: 4 };
+  // 80 bytes pass only when the split signature was recognized.
+  const maxBytes = (_headers, head) => (!head || head.toString('latin1', 0, 5) === '%PDF-' ? 100 : 50);
+  assert.equal((await requestPinned(new URL(`${base}/document`), { address, maxBytes })).bytes.length, 80);
+  await assert.rejects(requestPinned(new URL(`${base}/other`), { address, maxBytes }), /size limit/);
+});
+
 test('reports how many redirects it followed, so callers can share one redirect limit', async () => {
   let calls = 0;
   const result = await publicGet(

@@ -59,16 +59,20 @@ const unsupported = type =>
     `Unsupported page content type: ${type || 'missing'}. Supports HTML, plain text, Markdown, JSON, PDF and images, not browser rendering.`,
   );
 
-/**
- * Content served as generic binary, as servers often send PDFs and images: only its signature is
- * trusted. It is read up to the PDF limit, which only a PDF keeps.
- */
+/** Content served as generic binary, as servers often send PDFs and images: only its signature is trusted. */
 function binaryPage(response, type, signal) {
   const { bytes, url } = response;
   if (hasPdfSignature(bytes)) return pdfPage(bytes, url, { signal });
   if (!imageType(bytes)) throw unsupported(type);
-  if (bytes.length > PAGE_LIMIT) throw new Error('Response exceeds the download size limit.');
   return imagePage(bytes, type, url);
+}
+
+/** 20 MiB for a PDF, by its type or, for generic binary content, by its signature; 4 MiB otherwise. */
+function sizeLimit(headers, head) {
+  const type = mediaType(headers);
+  if (PDF_TYPES.includes(type)) return DOCUMENT_LIMIT;
+  if (BINARY_TYPES.includes(type) && (!head || hasPdfSignature(head))) return DOCUMENT_LIMIT;
+  return PAGE_LIMIT;
 }
 
 async function readablePage(response, type, signal) {
@@ -117,10 +121,7 @@ export async function fetchPage({ url }, { signal, request = publicGet, timeLimi
     headers: {
       Accept: `text/html, text/plain, text/markdown, application/json, application/pdf, ${IMAGE_TYPES.join(', ')}`,
     },
-    maxBytes: headers => {
-      const type = mediaType(headers);
-      return PDF_TYPES.includes(type) || BINARY_TYPES.includes(type) ? DOCUMENT_LIMIT : PAGE_LIMIT;
-    },
+    maxBytes: sizeLimit,
   });
   if (response.status !== 200) throw pageError(response.status, github);
   signal?.throwIfAborted();
