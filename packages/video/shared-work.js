@@ -22,6 +22,8 @@ export class SharedWork {
    * @returns {Promise<T>}
    */
   run(key, load, signal, { maxAgeMs = Number.POSITIVE_INFINITY } = {}) {
+    // Nothing starts for a call cancelled before it begins: no call would wait for that work.
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const existing = this.#entries.get(key);
     if (existing && this.now() - existing.at < maxAgeMs) return this.#wait(key, existing, signal);
     const controller = new AbortController();
@@ -54,8 +56,8 @@ export class SharedWork {
   }
 
   #wait(key, entry, signal) {
-    if (entry.settled) return entry.promise;
     if (signal?.aborted) return Promise.reject(signal.reason);
+    if (entry.settled) return entry.promise;
     entry.waiting++;
     return new Promise((resolve, reject) => {
       let waiting = true;

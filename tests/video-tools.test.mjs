@@ -506,6 +506,21 @@ test('a cancelled call stops waiting at once, while the other call keeps the sha
   }
 });
 
+test('a call cancelled before it starts runs nothing and gets no result, even one already known', async t => {
+  const { tools, calls } = await setup(t, { info: info() });
+  const cancelled = AbortSignal.abort();
+  const text = { model: { input: ['text'] } };
+  await assert.rejects(tools.video_overview.execute('1', { source: URL_SOURCE }, cancelled, undefined, text), {
+    name: 'AbortError',
+  });
+  await pause(300);
+  assert.deepEqual(await calls(), []);
+  await tools.video_overview.execute('2', { source: URL_SOURCE }, undefined, undefined, text);
+  await assert.rejects(tools.video_overview.execute('3', { source: URL_SOURCE }, cancelled, undefined, text), {
+    name: 'AbortError',
+  });
+});
+
 test('a shared download stops once every call waiting for it is cancelled', async t => {
   // Without subtitles, the download is the last yt-dlp run: the one whose process is recorded.
   const bare = info({ subtitles: {}, automatic_captions: {} });
