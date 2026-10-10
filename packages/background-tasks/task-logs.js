@@ -4,6 +4,8 @@ import { open, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const LOG_LIMIT = 10 * 1024 * 1024;
+// Large enough to batch writes and amortize the tail rewrite past LOG_LIMIT.
+const QUEUE_LIMIT = 4 * 1024 * 1024;
 const isContinuation = byte => (byte & 0xc0) === 0x80;
 
 function completeUtf8End(data, end) {
@@ -49,15 +51,45 @@ async function writeLog(log, chunk) {
   }
 }
 
-/** Queues `chunk` for the combined log and its stream's log, after earlier chunks. */
-export function appendOutput(task, stream, chunk) {
+function setReading(task, reading) {
+  for (const output of [task.child.stdout, task.child.stderr]) {
+    if (reading) output.resume();
+    else output.pause();
+  }
+}
+
+/** Writes every chunk queued so far as one batch per log, then lets the pipes flow again. */
+async function writeQueued(task) {
   const { logs } = task;
+  const batch = task.queued;
+  task.queued = [];
+  const bytes = batch.reduce((sum, { chunk }) => sum + chunk.length, 0);
+  try {
+    await writeLog(logs.combined, Buffer.concat(batch.map(({ chunk }) => chunk)));
+    for (const stream of ['stdout', 'stderr']) {
+      const chunks = batch.filter(entry => entry.stream === stream).map(({ chunk }) => chunk);
+      if (chunks.length) await writeLog(logs[stream], Buffer.concat(chunks));
+    }
+    task.totalBytes = logs.combined.totalBytes;
+    task.truncated = logs.combined.truncated;
+  } finally {
+    task.queuedBytes -= bytes;
+    if (task.queuedBytes < QUEUE_LIMIT) setReading(task, true);
+  }
+}
+
+/**
+ * Queues `chunk` for the combined log and its stream's log, after earlier chunks. Past
+ * QUEUE_LIMIT unwritten bytes, the task's pipes pause: a faster writer waits in its pipe
+ * instead of growing Pi's memory.
+ */
+export function appendOutput(task, stream, chunk) {
+  task.queued.push({ stream, chunk });
+  task.queuedBytes += chunk.length;
+  if (task.queuedBytes >= QUEUE_LIMIT) setReading(task, false);
+  if (task.queued.length > 1) return;
   task.writing = task.writing
-    .then(async () => {
-      for (const log of [logs.combined, logs[stream]]) await writeLog(log, chunk);
-      task.totalBytes = logs.combined.totalBytes;
-      task.truncated = logs.combined.truncated;
-    })
+    .then(() => writeQueued(task))
     .catch(error => {
       task.logError = error.message;
     });

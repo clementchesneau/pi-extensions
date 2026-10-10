@@ -51,7 +51,8 @@ without interrupting its current turn.
 ## Logs and cleanup
 
 - Logs are private temporary files. The latest 10 MiB of each stream are kept, and deleted when
-  the session ends.
+  the session ends. A command that writes faster than its logs are saved waits for them, instead
+  of filling Pi's memory.
 - Switching session, `/reload` and quitting Pi stop the tasks. A crash or SIGKILL of Pi can leave
   them running.
 - Stopping covers the task's process group and the descendants observed in other groups. A

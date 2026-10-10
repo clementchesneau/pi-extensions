@@ -99,6 +99,8 @@ function taskRecord({ id, title, command, resume, path, logs, child }) {
     observed: new Map(),
     groups: new Map(),
     writing: Promise.resolve(),
+    queued: [],
+    queuedBytes: 0,
     stopPromise: null,
     timer: null,
   };

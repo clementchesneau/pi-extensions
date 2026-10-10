@@ -277,3 +277,30 @@ test('four concurrent tasks, bounded log tail and optional duration limit', asyn
   assert.ok(output.text.length <= 16 * 1024);
   assert.match(output.text, /END/);
 });
+
+test('output faster than the log writer waits in the pipe, not in memory', async t => {
+  const manager = await fixture(t);
+  const baseline = process.memoryUsage().arrayBuffers;
+  let peak = 0;
+  const sampler = setInterval(() => {
+    peak = Math.max(peak, process.memoryUsage().arrayBuffers - baseline);
+  }, 10);
+  t.after(() => clearInterval(sampler));
+  const flood = await startTask(manager, 'yes | head -c 300000000');
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const asked = Date.now();
+  await manager.output(flood.id);
+  const latency = Date.now() - asked;
+  // Short waits: a long pending wait timer would keep the test process alive after the test.
+  let done;
+  for (const deadline = Date.now() + 20_000; Date.now() < deadline;) {
+    done = await manager.wait(flood.id, 100);
+    if (!done.timedOut) break;
+  }
+  clearInterval(sampler);
+  t.diagnostic(`output latency ${latency} ms, peak buffers ${Math.round(peak / 2 ** 20)} MiB`);
+  assert.equal(done.task.state, 'completed');
+  assert.equal(done.task.totalBytes, 300_000_000);
+  assert.ok(latency < 2000, `task_output waited ${latency} ms behind queued output`);
+  assert.ok(peak < 192 * 2 ** 20, `${Math.round(peak / 2 ** 20)} MiB of output held in memory`);
+});
