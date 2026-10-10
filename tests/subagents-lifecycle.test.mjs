@@ -505,6 +505,71 @@ test('tree navigation preserves a still-visible ancestor mission', async t => {
   assert.equal(stopped, true);
 });
 
+test('tree navigation stops a mission started after session start when leaving the point it was started from', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'subagent-tree-launch-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const sessionManager = SessionManager.inMemory(root);
+  const startLeaf = sessionManager.appendMessage({ role: 'user', content: 'before', timestamp: Date.now() });
+  const fake = fakePi();
+  let stopped = false;
+  subagents(fake.pi, {
+    agentDir: root,
+    configPath: join(root, 'config.json'),
+    createRuntime: async () => ({
+      prompt: async () => ({ runId: 'worker', result: new Promise(() => {}) }),
+      stop: async () => {
+        stopped = true;
+      },
+    }),
+  });
+  const ctx = {
+    cwd: root,
+    mode: 'tui',
+    hasUI: false,
+    signal: undefined,
+    thinkingLevel: 'off',
+    model: {
+      provider: 'openai',
+      id: 'fixture',
+      api: 'openai-completions',
+      baseUrl: 'https://example.test/v1',
+      input: ['text'],
+    },
+    modelRegistry: {},
+    isProjectTrusted: () => false,
+    isIdle: () => false,
+    sessionManager,
+    ui: { notify: () => {} },
+  };
+  await fake.fire('session_start', {}, ctx);
+  sessionManager.appendMessage({ role: 'user', content: 'question', timestamp: Date.now() });
+  sessionManager.appendMessage({
+    role: 'assistant',
+    content: [{ type: 'text', text: 'starting a mission' }],
+    timestamp: Date.now(),
+  });
+  const mission = (
+    await fake.tools
+      .get('subagent_start')
+      .execute('start', { title: 'Later', task: 'work', context: '' }, undefined, undefined, ctx)
+  ).details;
+  const [visible] = await fake.fire('context', { messages: [] }, ctx);
+  assert.ok(visible.messages.at(-1).content.includes(mission.agentId), 'the mission stays visible on its branch');
+  sessionManager.appendMessage({ role: 'user', content: 'follow-up', timestamp: Date.now() });
+  await fake.fire('session_tree', {}, ctx);
+  assert.equal(stopped, false, 'moving to a descendant of the launch point keeps the mission');
+  sessionManager.branch(startLeaf);
+  await fake.fire('session_tree', {}, ctx);
+  assert.equal(stopped, true, 'returning before the launch point stops the mission');
+  await assert.rejects(
+    fake.tools
+      .get('subagent_send')
+      .execute('send', { agentId: mission.agentId, message: 'continue' }, undefined, undefined, ctx),
+    /branch/i,
+  );
+  await fake.fire('session_shutdown', {}, ctx);
+});
+
 test('tree navigation stops the abandoned branch and anchors new work to the selected Pi leaf', async t => {
   const root = await mkdtemp(join(tmpdir(), 'subagent-tree-'));
   t.after(() => rm(root, { recursive: true, force: true }));

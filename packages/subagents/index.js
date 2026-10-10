@@ -103,7 +103,10 @@ function initializeSubagents(
   const indicator = connectActivityIndicator(pi);
   registerSubagentRenderers(pi, { wasRead: details => ext.runtime?.readRuns?.has(readKey(details)) ?? false });
   const tools = createSubagentTools({
-    getManager: () => ext.runtime?.manager,
+    getManager: ctx => {
+      if (ext.runtime && ctx) followLeaf(ext.runtime, ctx);
+      return ext.runtime?.manager;
+    },
     capture: (ctx, input) => capture(pi, ext, ctx, input),
     onResultRead: identity => ext.runtime?.readRuns?.add(readKey(identity)),
     modelGuidePath,
@@ -258,6 +261,20 @@ async function startSession(pi, ext, ctx, indicator) {
     runtime.ui = createUI(ext, ctx, indicator);
     await runtime.ui.ready;
   }
+}
+
+/**
+ * The conversation has grown on the current branch since session start or `/tree`: its leaf
+ * belongs to that branch, and agents started now are anchored to it, so leaving this point
+ * stops them.
+ */
+function followLeaf(runtime, ctx) {
+  const leaf = ctx.sessionManager.getLeafId?.();
+  if (!leaf || leaf === runtime.branchId || !runtime.deliveryEnabled) return;
+  runtime.branchIds.add(leaf);
+  runtime.delivery.branchIds.add(leaf);
+  runtime.manager.setBranchId(leaf, runtime.branchIds);
+  runtime.branchId = leaf;
 }
 
 /** Moves delivery to the new branch; agents still running for the branch being left are stopped. */
