@@ -42,6 +42,13 @@ status.
 - Git status is read locally, without a shell, network or polling, after your inputs, tool calls
   and agent runs. A change made from another terminal while Pi is idle shows at the next of these,
   or with `/graphite-ui refresh`.
+- When the repository's own Git config sets a command that `git status` would run, an fsmonitor
+  hook or a content filter such as a local Git LFS install, the footer shows the branch only, so
+  that opening Pi in a downloaded repository runs nothing from it. Changes inside submodules are
+  not counted, and a partial clone never fetches a missing object for the footer, which then shows
+  `git ?` (Git 2.45 or later), for the same reason. Before Git 2.26, the footer always shows the
+  branch only; before Git 2.36, also when the repository sets `core.fsmonitor` to `true` or
+  `false`, which those versions run as a hook.
 - Tokens and cost add up the assistant messages of the active branch; they are not an invoice.
 - The timer total survives compactions, reloads, resumes and forks, and follows the branch you
   select with `/tree`.
