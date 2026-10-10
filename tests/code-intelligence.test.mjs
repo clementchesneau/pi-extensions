@@ -3,6 +3,7 @@ import test from 'node:test';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { delimiter, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import {
   findWorkspaceRoot,
   languageForPath,
@@ -12,6 +13,7 @@ import { LspClient } from '../packages/code-intelligence/client.js';
 import { CodeNavManager } from '../packages/code-intelligence/manager.js';
 import codeIntelligenceExtension, { createCodeNavTool } from '../packages/code-intelligence/index.js';
 import { formatCodeNavOutput } from '../packages/code-intelligence/output.js';
+import { shiftDiagnosticAfterProbe } from '../packages/code-intelligence/diagnostic-probe.js';
 import { Check } from 'typebox/value';
 import { createFakePi } from './fixtures/fake-pi.mjs';
 
@@ -507,6 +509,57 @@ test('real TypeScript diagnostics preserve declaration-file TS1036 and TS1039 er
   assert.ok(moduleAmbient.items.some(item => item.code === 1039));
   assert.ok(!ambient.items.some(item => item.code === 1030));
   assert.ok(!moduleAmbient.items.some(item => item.code === 1030));
+});
+
+test(
+  'real TypeScript diagnostics work in route folders whose names the server percent-encodes',
+  { timeout: 15_000 },
+  async t => {
+    const root = await mkdtemp(join(tmpdir(), 'pi-code-nav-real-uri-'));
+    const route = join(root, 'app', '(group)', '@slot', '[id]', '+page.ts');
+    await mkdir(dirname(route), { recursive: true });
+    await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true } }));
+    await writeFile(route, "let duplicate = 1;\nlet duplicate = 2;\nconst value: number = 'text';\nexport {};\n");
+    const server = await resolveTypeScriptServer(root, root, { PATH: '' });
+    const client = new LspClient({
+      root,
+      command: server.command,
+      args: server.args,
+      requestTimeoutMs: 5000,
+      diagnosticsTimeoutMs: 1000,
+      shutdownTimeoutMs: 1000,
+    });
+    t.after(async () => {
+      await client.close();
+      await rm(root, { recursive: true, force: true });
+    });
+
+    const { items } = await client.navigate({ action: 'diagnostics', path: route });
+    assert.deepEqual(
+      items.filter(item => item.code === 2322).map(item => item.range.start.line),
+      [2],
+    );
+    assert.deepEqual(
+      items
+        .filter(item => item.code === 2451)
+        .map(item => item.range.start.line)
+        .sort(),
+      [0, 1],
+    );
+  },
+);
+
+test('related information in the probed file is shifted back whatever its URI encoding', () => {
+  const uri = pathToFileURL('/work/app/(group)/@slot/+page.ts').href;
+  const encoded = 'file:///work/app/%28group%29/%40slot/%2Bpage.ts';
+  const at = line => ({ start: { line, character: 0 }, end: { line, character: 1 } });
+  const shifted = shiftDiagnosticAfterProbe(
+    { range: at(3), relatedInformation: [{ location: { uri: encoded, range: at(2) }, message: 'declared here' }] },
+    uri,
+    { line: 0, inline: false },
+  );
+  assert.equal(shifted.range.start.line, 2);
+  assert.equal(shifted.relatedInformation[0].location.range.start.line, 1);
 });
 
 test('LSP protocol rejects unsupported capabilities and transmits cancellation with bounded timeouts', async t => {

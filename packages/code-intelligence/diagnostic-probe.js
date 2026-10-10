@@ -1,6 +1,7 @@
 // Diagnostic probes: deliberate compiler errors inserted into a document, so that the
 // diagnostics received with them are known to be current. The probe's own diagnostics are
 // then dropped and the others shifted back to the original lines.
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
 function scriptKindForPath(path) {
@@ -117,6 +118,18 @@ export function createProbeSpec(generation, syntax) {
   return { marker, diagnostics };
 }
 
+/**
+ * Servers may percent-encode characters that Node keeps, such as `(`, `@` or `+`: compare
+ * file URIs through the path they designate.
+ */
+export function canonicalFileUri(uri) {
+  try {
+    return pathToFileURL(fileURLToPath(uri)).href;
+  } catch {
+    return uri;
+  }
+}
+
 export function shiftDiagnosticAfterProbe(diagnostic, uri, mapping) {
   const shiftPosition = position => {
     if (!position || position.line <= mapping.line) return position;
@@ -143,7 +156,7 @@ export function shiftDiagnosticAfterProbe(diagnostic, uri, mapping) {
           relatedInformation: diagnostic.relatedInformation.map(information => ({
             ...information,
             location:
-              information.location?.uri === uri
+              information.location && canonicalFileUri(information.location.uri) === uri
                 ? { ...information.location, range: shiftRange(information.location.range) }
                 : information.location,
           })),

@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { CancellationTokenSource, createMessageConnection } from 'vscode-jsonrpc/node.js';
 import {
+  canonicalFileUri,
   createDeclarationProbeSpec,
   createProbeSpec,
   hasDiagnosticProbe,
@@ -310,7 +311,7 @@ export class LspClient {
 
   #receiveDiagnostics(params) {
     const diagnostics = params.diagnostics ?? [];
-    const probeWaiter = this.diagnosticProbeWaiters.get(params.uri);
+    const probeWaiter = this.diagnosticProbeWaiters.get(canonicalFileUri(params.uri));
     if (!probeWaiter) return;
     if (params.version !== undefined && params.version !== probeWaiter.probe.version) return;
     if (hasDiagnosticProbe(diagnostics, probeWaiter.probe)) probeWaiter.latest = diagnostics;
