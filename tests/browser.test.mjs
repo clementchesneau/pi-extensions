@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { readFile, rm, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Check } from 'typebox/value';
@@ -200,6 +202,100 @@ test('opens a real local UI, inspects accessible elements and closes lazily', as
   await call('browser_close', {});
   await assert.rejects(call('browser_inspect', {}), /browser_open/);
   await close();
+});
+
+/** Command lines of the Chromium processes this test process started. */
+function chromiumCommands() {
+  const rows = execFileSync('ps', ['-axo', 'ppid=,command='], { encoding: 'utf8' }).split('\n');
+  return rows
+    .map(row => row.trim().match(/^(\d+)\s+(.*)$/))
+    .filter(match => match && Number(match[1]) === process.pid && /chrom/i.test(match[2]))
+    .map(match => match[2]);
+}
+
+test('Chromium runs inside its operating-system sandbox, or says that it does not', async t => {
+  const { BrowserSession } = await import('../packages/ui-check/browser.js');
+  const url = await fixture(t);
+  const session = new BrowserSession();
+  t.after(() => session.close());
+  const opened = await session.open({ url });
+  const commands = chromiumCommands();
+  assert.ok(commands.length > 0, 'the Chromium browser process was found');
+  const unsandboxed = commands.some(command => command.includes('--no-sandbox'));
+  if (process.platform === 'darwin') assert.equal(unsandboxed, false, 'macOS always provides the sandbox');
+  assert.equal(Boolean(opened.warning), unsandboxed);
+});
+
+test('without an available sandbox, Chromium still opens and every open reports it', async t => {
+  // playwright is a dependency of ui-check, not of the tests.
+  const { chromium } = createRequire(new URL('../packages/ui-check/package.json', import.meta.url))('playwright');
+  const { BrowserSession } = await import('../packages/ui-check/browser.js');
+  const { BrowserOutput } = await import('../packages/ui-check/output.js');
+  const url = await fixture(t);
+  const session = new BrowserSession({
+    launch: options =>
+      options.chromiumSandbox
+        ? Promise.reject(
+            new Error(
+              'browserType.launch: Target page, context or browser has been closed\n[pid=1][err] No usable sandbox!',
+            ),
+          )
+        : chromium.launch(options),
+  });
+  t.after(() => session.close());
+  const first = await session.open({ url });
+  const again = await session.open({ url });
+  for (const opened of [first, again]) {
+    assert.match(opened.warning, /without its operating-system sandbox.*No usable sandbox!/s);
+    assert.match((await new BrowserOutput().format(opened)).content[0].text, /No usable sandbox!/);
+  }
+  // A page that fails to load leaves the browser open: the failure says how it runs too.
+  await assert.rejects(
+    session.open({ url: 'http://127.0.0.1:1/' }),
+    /page\.goto: net::ERR_UNSAFE_PORT[\s\S]*without its operating-system sandbox/,
+  );
+});
+
+test('only a sandbox failure starts Chromium without the sandbox, and cancellation stops the retry', async t => {
+  const { BrowserSession } = await import('../packages/ui-check/browser.js');
+  const url = await fixture(t);
+  const launches = [];
+  const timeout = new BrowserSession({
+    launch: async options => {
+      launches.push(options);
+      throw new Error('browserType.launch: Timeout 10000ms exceeded.');
+    },
+  });
+  await assert.rejects(timeout.open({ url }), /Cannot launch Chromium/);
+  // The launch log of an unrelated failure can still contain the word, in a path for example.
+  const path = new BrowserSession({
+    launch: async options => {
+      launches.push(options);
+      throw new Error(
+        'browserType.launch: Timeout 10000ms exceeded.\nCall log:\n  - <launching> /home/sandbox/.cache/ms-playwright/chromium/chrome',
+      );
+    },
+  });
+  await assert.rejects(path.open({ url }), /Cannot launch Chromium/);
+  assert.deepEqual(
+    launches.map(options => options.chromiumSandbox),
+    [true, true],
+  );
+
+  launches.length = 0;
+  const controller = new AbortController();
+  const cancelled = new BrowserSession({
+    launch: async options => {
+      launches.push(options);
+      controller.abort(new Error('cancelled by user'));
+      throw new Error('browserType.launch: Chromium sandboxing failed!');
+    },
+  });
+  await assert.rejects(
+    cancelled.run(() => cancelled.open({ url }, controller.signal), controller.signal),
+    /cancelled by user/,
+  );
+  assert.equal(launches.length, 1);
 });
 
 test('the README installs Chromium with the Playwright version the package depends on', async () => {

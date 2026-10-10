@@ -52,6 +52,10 @@ verdict that the UI matches your request.
 
 - **Pages run their JavaScript and can reach any network**, including local ones. The browser
   context is not a security sandbox.
+- Chromium runs inside its operating-system sandbox, which keeps a page exploiting a browser flaw
+  away from your files. Where the system cannot provide it, such as Linux without unprivileged
+  user namespaces, as root or in some containers, Chromium runs without it and every
+  `browser_open` result says so.
 - A click or a navigation can change server data. Use test environments and test accounts.
 - Page text, URLs and screenshots go to your model provider and stay in the Pi history; images
   also cost context and tokens.

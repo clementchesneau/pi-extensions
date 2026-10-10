@@ -33,11 +33,52 @@ const LOCATOR_ACTIONS = {
   },
 };
 
+// What Chromium logs when its sandbox cannot start, and what Playwright rewrites it to.
+const SANDBOX_FAILURE = /Chromium sandboxing failed!|No usable sandbox!|crbug\.com\/(?:357670|638180)/;
+
+/** The line of a launch error that explains it, preferably the sandbox's own message. */
+function launchReason(error) {
+  const lines = String(error?.message ?? error).split('\n');
+  return (lines.find(line => SANDBOX_FAILURE.test(line)) ?? lines[0]).trim().slice(0, 300);
+}
+
 export class BrowserSession {
   browser;
   page;
   diagnostics = [];
   queue = Promise.resolve();
+  // Set while the browser runs without its OS sandbox: why it could not start with it.
+  sandboxWarning;
+
+  /** @param {{ launch?: (options: import('playwright').LaunchOptions) => Promise<import('playwright').Browser> }} [options] */
+  constructor({ launch = options => chromium.launch(options) } = {}) {
+    this.launch = launch;
+  }
+
+  /**
+   * Chromium with its OS sandbox, which keeps a compromised page renderer away from the user's
+   * files. Where the system cannot provide it (Linux without user namespaces, root, some
+   * containers), Chromium starts without it and every browser_open says so.
+   */
+  async launchBrowser(signal) {
+    const installHint = error =>
+      new Error(`Cannot launch Chromium. Install it with: ${INSTALL_CHROMIUM}`, { cause: error });
+    let sandboxError;
+    try {
+      return await this.launch({ headless: true, chromiumSandbox: true, timeout: TIMEOUT });
+    } catch (error) {
+      if (!SANDBOX_FAILURE.test(String(error?.message))) throw installHint(error);
+      sandboxError = error;
+    }
+    signal?.throwIfAborted();
+    try {
+      const browser = await this.launch({ headless: true, timeout: TIMEOUT });
+      this.sandboxWarning = `Chromium is running without its operating-system sandbox, which could not start here (${launchReason(sandboxError)}). A page exploiting a browser flaw could reach this computer.`;
+      return browser;
+    } catch (error) {
+      throw installHint(error);
+    }
+  }
 
   // Pi may execute sibling tool calls concurrently. Keep page operations ordered.
   run(operation, signal) {
@@ -68,7 +109,18 @@ export class BrowserSession {
     return task;
   }
 
-  async open({ url, width = 1280, height = 800 }, signal) {
+  async open(params, signal) {
+    try {
+      const observation = await this.navigate(params, signal);
+      return this.sandboxWarning ? { ...observation, warning: this.sandboxWarning } : observation;
+    } catch (error) {
+      // A failed navigation leaves the browser open: its failure must say how it runs too.
+      if (!this.sandboxWarning) throw error;
+      throw new Error(`${error?.message ?? error}\n${this.sandboxWarning}`, { cause: error });
+    }
+  }
+
+  async navigate({ url, width = 1280, height = 800 }, signal) {
     this.validateViewport(width, height);
     const parsed = new URL(url);
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
@@ -76,11 +128,7 @@ export class BrowserSession {
     }
     if (this.browser && (!this.browser.isConnected() || this.page?.isClosed())) await this.close();
     if (!this.browser) {
-      try {
-        this.browser = await chromium.launch({ headless: true, timeout: TIMEOUT });
-      } catch (error) {
-        throw new Error(`Cannot launch Chromium. Install it with: ${INSTALL_CHROMIUM}`, { cause: error });
-      }
+      this.browser = await this.launchBrowser(signal);
       signal?.throwIfAborted();
       try {
         const context = await this.browser.newContext({ viewport: { width, height }, acceptDownloads: false });
@@ -194,6 +242,7 @@ export class BrowserSession {
     this.browser = undefined;
     this.page = undefined;
     this.diagnostics = [];
+    this.sandboxWarning = undefined;
     await browser?.close();
   }
 }
