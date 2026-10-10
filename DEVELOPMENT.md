@@ -246,6 +246,8 @@ or cancellation, and operations on one server are serialized.
 `web_fetch` checks every DNS address and pins the chosen one for the connection; each redirect
 goes through the same checks. Responses compressed despite `Accept-Encoding: identity` are
 refused, and no environment proxy is used. Remote error bodies and raw network errors are never
-exposed. JSON is returned as text, without reformatting, to keep large numeric IDs intact. The
-Brave key is only sent to `api.search.brave.com`, and search redirects are refused. Context7 goes
-through the pinned `@upstash/context7-sdk` 0.4.1.
+exposed. JSON is returned as text, without reformatting, to keep large numeric IDs intact. HTML
+is converted to Markdown in a worker thread, like PDFs, so that a large page never blocks Pi: the
+worker stops on cancellation or at the URL's 20-second deadline. The Brave key is only sent to
+`api.search.brave.com`, and search redirects are refused. Context7 goes through the pinned
+`@upstash/context7-sdk` 0.4.1.

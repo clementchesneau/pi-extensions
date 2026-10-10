@@ -251,3 +251,41 @@ test('accepts plain text and Markdown but rejects failed and empty pages', async
     );
   }
 });
+
+// About 1 MiB of paragraphs: seconds of Readability and Turndown work.
+const complexHtml = () => ({
+  url: 'https://example.com/huge',
+  status: 200,
+  headers: { 'content-type': 'text/html' },
+  body: `<html><body>${'<p>w</p>'.repeat(128 * 1024)}</body></html>`,
+});
+
+test('cancelling stops HTML extraction without waiting for it or blocking Pi', async t => {
+  const controller = new AbortController();
+  let ticks = 0;
+  const ticker = setInterval(() => ticks++, 20);
+  const cancel = setTimeout(() => controller.abort(new Error('cancelled by user')), 200);
+  t.after(() => {
+    clearInterval(ticker);
+    clearTimeout(cancel);
+  });
+  const started = Date.now();
+  await assert.rejects(
+    fetchPage({ url: 'https://example.com/huge' }, { request: async () => complexHtml(), signal: controller.signal }),
+    /cancelled by user/,
+  );
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 1500, `extraction went on for ${elapsed} ms after cancellation`);
+  assert.ok(ticks >= 5, `the event loop ran ${ticks} times during extraction`);
+});
+
+test('HTML extraction shares the time limit of its URL with the download', async () => {
+  const slowDownload = () => new Promise(resolve => setTimeout(() => resolve(complexHtml()), 1000));
+  const started = Date.now();
+  await assert.rejects(
+    fetchPage({ url: 'https://example.com/huge' }, { request: slowDownload, timeLimitMs: 1500 }),
+    /This URL took longer than 1.5 seconds to download and read/,
+  );
+  // Its own 1.5-second budget after the download would end at 2.5 seconds or later.
+  assert.ok(Date.now() - started < 2200);
+});

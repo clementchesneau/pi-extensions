@@ -1,4 +1,4 @@
-import { Worker } from 'node:worker_threads';
+import { runExtractionWorker } from './extraction-worker.js';
 
 const SIGNATURE = Buffer.from('%PDF-');
 const TIME_LIMIT_MS = 20_000;
@@ -20,29 +20,15 @@ function extractInWorker(bytes, { signal, timeoutMs }) {
   signal?.throwIfAborted();
   // A fresh copy owns its ArrayBuffer, which can then be transferred instead of cloned.
   const data = new Uint8Array(bytes);
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./pdf-worker.js', import.meta.url), {
-      workerData: data,
-      transferList: [data.buffer],
-      resourceLimits: { maxOldGenerationSizeMb: MEMORY_LIMIT_MB },
-    });
-    const finish = (settle, value) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-      void worker.terminate();
-      settle(value);
-    };
-    const abort = () => finish(reject, signal?.reason);
-    const timer = setTimeout(() => {
-      const limit = new ExtractionLimitError(
+  return runExtractionWorker(new URL('./pdf-worker.js', import.meta.url), data, {
+    signal,
+    timeoutMs,
+    memoryLimitMb: MEMORY_LIMIT_MB,
+    transferList: [data.buffer],
+    limitError: () =>
+      new ExtractionLimitError(
         `PDF text extraction took longer than ${timeoutMs / 1000} seconds; the document is too large or complex.`,
-      );
-      finish(reject, limit);
-    }, timeoutMs);
-    signal?.addEventListener('abort', abort, { once: true });
-    worker.once('message', result => finish(resolve, result));
-    worker.once('error', error => finish(reject, error));
-    worker.once('exit', code => finish(reject, new Error(`PDF text extraction stopped (exit code ${code}).`)));
+      ),
   });
 }
 
